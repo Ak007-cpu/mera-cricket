@@ -1,0 +1,52 @@
+FREE APK BANANE AUR SHARE KARNE KI GUIDE
+=========================================
+
+PEHLE (zaroori): Is zip ka code GitHub par push kar ke Render par deploy karein.
+Render Environment mein ye hona chahiye:
+   ADMIN_PIN, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT
+(VAPID keys ke liye:  npx web-push generate-vapid-keys)
+
+Phone ke Chrome mein Render link khol kar check kar lein ke app khulti hai.
+
+STEP 1 - APK banayein (free)
+   1. pwabuilder.com kholen, apna Render link daal kar Start dabayein.
+   2. "Package for stores" > Android > Generate.
+   3. Options mein:
+        - Package ID:  com.datavault.livecricket   (ya apni marzi ka, yaad rakhein)
+        - "Notification delegation": ON  (zaroor, warna notification nahi aayegi)
+        - Signing key: "New" (naya banayein)
+   4. Download dabayein. Ek zip milega jis mein:
+        - .apk file         (ye share karni hai)
+        - signing.keystore + signing-key-info.txt   (INHEIN SAMBHAL KAR RAKHEIN,
+          gum hua to aap kabhi is app ki update nahi bhej sakenge)
+        - assetlinks.json   (is mein SHA-256 fingerprint hai)
+
+STEP 2 - App ko full screen banayein (browser bar hatane ke liye)
+   1. signing-key-info.txt ya assetlinks.json se SHA-256 fingerprint copy karein
+      (AA:BB:CC:... wali lambi line).
+   2. Render > Environment mein daalein:
+        ANDROID_SHA256_FINGERPRINT = (wo fingerprint)
+        ANDROID_PACKAGE_ID         = (wahi Package ID jo Step 1 mein rakhi)
+   3. Render redeploy hone ke baad kholen:
+        https://AAPKA-LINK/.well-known/assetlinks.json
+      Wahan JSON nazar aani chahiye.
+
+STEP 3 - Share karein (free)
+   1. GitHub repo > Releases > "Draft a new release"
+   2. APK file attach karein > Publish.
+   3. APK ka download link logon ko WhatsApp par bhej dein.
+
+LOG KYA KAREIN
+   1. Link se APK download karein.
+   2. "Install unknown apps" allow karein.
+   3. Play Protect warn kare to "More details" > "Install anyway".
+   4. App kholen, Notification "Allow" karein.
+
+YAAD RAKHEIN
+   - Pehle se install purani APK (same package ID) ko UNINSTALL karna hoga,
+     warna "App not installed" aayega (signing key alag hogi).
+   - Phone mein Chrome install aur updated hona chahiye.
+   - Code update karne par APK dobara banane ki zaroorat nahi, app khud update hoti hai.
+   - Google ka naya developer verification rule abhi Brazil, Indonesia, Singapore,
+     Thailand mein lagu hai. Baaqi mulkon mein 2027 mein aa sakta hai. Tab free
+     "limited distribution" account (20 devices tak) ya verification chahiye ho sakti hai.

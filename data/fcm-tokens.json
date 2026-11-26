@@ -1,0 +1,57 @@
+[
+  {
+    "token": "APA91bHum4x98234872938472938472398472983749283749823749823749823749283749823749823",
+    "platform": "android",
+    "preferences": {
+      "enabled": true,
+      "wickets": true,
+      "centuries": true,
+      "fifties": true,
+      "boundariesFour": false,
+      "boundariesSix": true
+    },
+    "registeredAt": 1793793178662,
+    "lastActiveAt": 1793793178662
+  },
+  {
+    "token": "web_client_warlb2aq3hg_1793793655520",
+    "platform": "web",
+    "preferences": {
+      "enabled": true,
+      "wickets": true,
+      "centuries": true,
+      "fifties": true,
+      "thirties": true,
+      "doubleCenturies": true,
+      "fiveWickets": true,
+      "threeWickets": true,
+      "boundaries": true,
+      "boundariesFour": true,
+      "boundariesSix": true,
+      "maidenOvers": true,
+      "inningsBreak": true,
+      "matchResult": true,
+      "tightFinish": true,
+      "newMatchListed": true,
+      "matchStarting": true,
+      "matchStatusUpdates": true,
+      "sound": true,
+      "vibration": true,
+      "browserNotifications": false
+    },
+    "registeredAt": 1794253844119,
+    "lastActiveAt": 1794254127975
+  },
+  {
+    "token": "eXample_FCM_Token_For_Android_Mobile_Device_987654321",
+    "platform": "android",
+    "registeredAt": 1794254203891,
+    "lastActiveAt": 1794254203891
+  },
+  {
+    "token": "web_client_f76z0vu381n_1794467796546",
+    "platform": "web",
+    "registeredAt": 1794488298293,
+    "lastActiveAt": 1795604301704
+  }
+]

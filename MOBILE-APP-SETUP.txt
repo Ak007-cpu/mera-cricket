@@ -1,0 +1,23 @@
+LIVE CRICKET HD - PHONE APP + SILENT NOTIFICATIONS
+===================================================
+
+1) VAPID keys banayein (ek baar):
+      npx web-push generate-vapid-keys
+   Public Key aur Private Key copy kar lein.
+
+2) Server ko internet par chalayein (Render):
+   Render > Environment mein ye daalein:
+      VAPID_PUBLIC_KEY   = (public key)
+      VAPID_PRIVATE_KEY  = (private key)
+      VAPID_SUBJECT      = mailto:aapka@email.com
+      ADMIN_PIN          = (apna PIN)
+   Code GitHub par push karein, Render deploy kar dega.
+
+3) Phone par (Android Chrome):
+   - Apna Render link kholen
+   - Chrome menu (3 dots) > "Install app" / "Add to Home screen"
+   - Home screen se app kholen
+   - Notification "Allow" karein
+
+4) Test: Admin Studio > Notifications > koi test alert fire karein.
+   Phone par notification aayegi, bina sound ke.

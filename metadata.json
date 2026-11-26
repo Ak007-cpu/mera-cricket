@@ -1,0 +1,6 @@
+{
+  "name": "Live Cricket HD & Studio",
+  "description": "Real-time cricket live broadcast graphics, match scoreboard, OBS streaming overlay, and match centre.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

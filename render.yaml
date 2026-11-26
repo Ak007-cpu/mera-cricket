@@ -1,0 +1,47 @@
+services:
+  - type: web
+    name: live-cricket-hd
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm install && npm run build
+    startCommand: node server.js
+    healthCheckPath: /health
+    autoDeploy: true
+
+    envVars:
+      # Explicitly use Node.js version 20 engine
+      - key: NODE_VERSION
+        value: "20"
+
+      - key: NODE_ENV
+        value: production
+
+      - key: PORT
+        value: 10000
+
+      - key: VITE_API_BASE_URL
+        fromService:
+          type: web
+          name: live-cricket-hd
+          property: host
+
+      - key: ADMIN_PIN
+        generateValue: true
+
+      - key: FCM_SERVER_KEY
+        sync: false
+
+      # Web Push (phone notifications). Generate with: npx web-push generate-vapid-keys
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        value: mailto:admin@example.com
+
+      # Android APK (PWABuilder) - full-screen app link verification
+      - key: ANDROID_PACKAGE_ID
+        value: com.datavault.livecricket
+      - key: ANDROID_SHA256_FINGERPRINT
+        sync: false

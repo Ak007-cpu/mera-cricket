@@ -1,0 +1,477 @@
+{
+  "activeMatchId": "m_tuanoz",
+  "crexUrl": "https://crex.com/cricket-live-score/pak-vs-sl-1st-test-sri-lanka-tour-of-pakistan-2026-match-updates-13LT",
+  "crexMatchId": "https://crex.com/cricket-live-score/pak-vs-sl-1st-test-sri-lanka-tour-of-pakistan-2026-match-updates-13LT",
+  "matchTitle": "Pakistan vs Sri Lanka - Sri Lanka tour of Pakistan 2026",
+  "connectedAt": 1794387159079,
+  "lastSyncedAt": 1794515071789,
+  "syncIntervalMs": 3000,
+  "isAutoSyncEnabled": true,
+  "dataSourceMode": "auto",
+  "syncStatus": "failed",
+  "syncError": "Sync band hai, Manual mode on karein.",
+  "lastSuccessfulSyncAt": 1794515071789,
+  "connectedBy": "Admin Studio",
+  "triggers": [
+    {
+      "id": "trigger_wicket",
+      "name": "Wicket Falls",
+      "category": "wicket",
+      "enabledGlobally": true,
+      "titleTemplate": "🚨 WICKET FALLS: {{bowler}} strikes!",
+      "descriptionTemplate": "{{player}} is dismissed for {{score}} runs! {{teamScore}}",
+      "sound": "wicket",
+      "priority": "high",
+      "badgeColor": "#e11d48"
+    },
+    {
+      "id": "trigger_century",
+      "name": "Century (100 Runs)",
+      "category": "century",
+      "enabledGlobally": true,
+      "titleTemplate": "🏏 CENTURY FOR {{player}} (100*)!",
+      "descriptionTemplate": "{{player}} brings up a sublime hundred off {{balls}} balls! Standing ovation!",
+      "sound": "century",
+      "priority": "high",
+      "badgeColor": "#f59e0b"
+    },
+    {
+      "id": "trigger_fifty",
+      "name": "Half-Century (50 Runs)",
+      "category": "fifty",
+      "enabledGlobally": true,
+      "titleTemplate": "⭐ FIFTY UP: {{player}} (50*)",
+      "descriptionTemplate": "Crucial half-century reached in {{balls}} balls! {{teamScore}}",
+      "sound": "century",
+      "priority": "medium",
+      "badgeColor": "#eab308"
+    },
+    {
+      "id": "trigger_five_wickets",
+      "name": "5-Wicket Haul (5W)",
+      "category": "five_wickets",
+      "enabledGlobally": true,
+      "titleTemplate": "🔥 5-WICKET HAUL FOR {{bowler}} (5W)!",
+      "descriptionTemplate": "{{bowler}} delivers a devastating bowling masterclass with 5 wickets! Figures: {{bowlerFigures}}",
+      "sound": "wicket",
+      "priority": "high",
+      "badgeColor": "#10b981"
+    },
+    {
+      "id": "trigger_innings_break",
+      "name": "Innings Break & Target",
+      "category": "innings_break",
+      "enabledGlobally": true,
+      "titleTemplate": "⏸️ INNINGS BREAK — TARGET SET",
+      "descriptionTemplate": "First innings concluded at {{teamScore}}. Target: {{target}} runs.",
+      "sound": "innings_break",
+      "priority": "high",
+      "badgeColor": "#2563eb"
+    },
+    {
+      "id": "trigger_six",
+      "name": "Maximum Six (6)",
+      "category": "six",
+      "enabledGlobally": true,
+      "titleTemplate": "🔥 MASSIVE MAXIMUM SIX!",
+      "descriptionTemplate": "{{player}} clears the boundary ropes with a towering 95m hit!",
+      "sound": "six",
+      "priority": "medium",
+      "badgeColor": "#9333ea"
+    },
+    {
+      "id": "trigger_four",
+      "name": "Boundary Four (4)",
+      "category": "four",
+      "enabledGlobally": true,
+      "titleTemplate": "⚡ BOUNDARY FOUR!",
+      "descriptionTemplate": "{{player}} pierces the infield with exquisite timing for 4!",
+      "sound": "four",
+      "priority": "low",
+      "badgeColor": "#0284c7"
+    },
+    {
+      "id": "trigger_tight_finish",
+      "name": "Tight Finish / Last Over Drama",
+      "category": "tight_finish",
+      "enabledGlobally": true,
+      "titleTemplate": "🔥 THRILLING FINISH — DOWN TO THE WIRE!",
+      "descriptionTemplate": "Nail-biting climax! {{remainingRuns}} runs required from {{remainingBalls}} balls!",
+      "sound": "wicket",
+      "priority": "high",
+      "badgeColor": "#dc2626"
+    },
+    {
+      "id": "trigger_double_century",
+      "name": "Double Century / 150+ Runs",
+      "category": "double_century",
+      "enabledGlobally": true,
+      "titleTemplate": "👑 LEGENDARY LANDMARK: {{player}} 200*!",
+      "descriptionTemplate": "{{player}} achieves an unforgettable double century! Masterclass batting!",
+      "sound": "century",
+      "priority": "high",
+      "badgeColor": "#7c3aed"
+    },
+    {
+      "id": "trigger_thirty",
+      "name": "30 Runs Milestone",
+      "category": "thirty",
+      "enabledGlobally": true,
+      "titleTemplate": "⚡ QUICKFIRE 30*: {{player}}",
+      "descriptionTemplate": "{{player}} crosses 30 runs in quick time, shifting momentum! {{teamScore}}",
+      "sound": "fifty",
+      "priority": "low",
+      "badgeColor": "#38bdf8"
+    },
+    {
+      "id": "trigger_three_wickets",
+      "name": "3-Wicket / 4-Wicket Haul",
+      "category": "three_wickets",
+      "enabledGlobally": true,
+      "titleTemplate": "🎯 3-WICKET SPELL: {{bowler}} Strikes Again!",
+      "descriptionTemplate": "{{bowler}} dismantles the opposition with 3 key wickets! Figures: {{bowlerFigures}}",
+      "sound": "wicket",
+      "priority": "medium",
+      "badgeColor": "#059669"
+    },
+    {
+      "id": "trigger_maiden",
+      "name": "Maiden Over Bowled",
+      "category": "maiden",
+      "enabledGlobally": true,
+      "titleTemplate": "🛑 MAIDEN OVER: {{bowler}} applies relentless pressure!",
+      "descriptionTemplate": "6 consecutive dot balls bowled by {{bowler}}! Superb tight bowling.",
+      "sound": "wicket",
+      "priority": "low",
+      "badgeColor": "#64748b"
+    },
+    {
+      "id": "trigger_match_result",
+      "name": "Official Match Result",
+      "category": "match_result",
+      "enabledGlobally": true,
+      "titleTemplate": "🏆 MATCH RESULT: Victory Confirmed!",
+      "descriptionTemplate": "{{statusText}} — Match officially concluded.",
+      "sound": "century",
+      "priority": "high",
+      "badgeColor": "#f59e0b"
+    },
+    {
+      "id": "trigger_match_starting",
+      "name": "Match Starting Alert",
+      "category": "match_starting",
+      "enabledGlobally": true,
+      "titleTemplate": "🔴 MATCH STARTING NOW: {{matchTitle}}",
+      "descriptionTemplate": "Players are walking out to the middle. Live action underway!",
+      "sound": "innings_break",
+      "priority": "high",
+      "badgeColor": "#ef4444"
+    },
+    {
+      "id": "trigger_new_match",
+      "name": "New Match Listed on CREX",
+      "category": "new_match",
+      "enabledGlobally": true,
+      "titleTemplate": "📅 NEW MATCH LISTED: {{matchTitle}}",
+      "descriptionTemplate": "Added to live fixture tracker on CREX.",
+      "sound": "innings_break",
+      "priority": "medium",
+      "badgeColor": "#8b5cf6"
+    }
+  ],
+  "matchState": {
+    "matchId": "m_crex_uiupnn",
+    "crexUrl": "https://crex.com/cricket-live-score/pak-vs-sl-1st-test-sri-lanka-tour-of-pakistan-2026-match-updates-13LT",
+    "title": "Pakistan vs Sri Lanka - Sri Lanka tour of Pakistan 2026",
+    "matchType": "TEST",
+    "series": "Sri Lanka tour of Pakistan 2026",
+    "venue": "Rawalpindi Cricket Stadium, Rawalpindi",
+    "toss": "Pakistan elected to bat",
+    "statusText": "PAK 57/1 (21.2 ov)",
+    "gameState": "live",
+    "currentInnings": 1,
+    "currentRunRate": 2.67,
+    "battingTeam": {
+      "name": "Pakistan",
+      "shortName": "PAK",
+      "code": "PAK",
+      "logoUrl": "/api/team/flag/PAK",
+      "primaryColor": "#006629",
+      "secondaryColor": "#FFFFFF",
+      "score": {
+        "runs": 57,
+        "wickets": 1,
+        "overs": 21,
+        "balls": 2
+      }
+    },
+    "bowlingTeam": {
+      "name": "Sri Lanka",
+      "shortName": "SL",
+      "code": "SL",
+      "logoUrl": "/api/team/flag/SL",
+      "primaryColor": "#1A365D",
+      "secondaryColor": "#F59E0B",
+      "score": {
+        "runs": 0,
+        "wickets": 0,
+        "overs": 0,
+        "balls": 0
+      }
+    },
+    "striker": {
+      "playerId": "p_1794515071786_1",
+      "name": "Azan Awais",
+      "shortName": "Azan Awais",
+      "runs": 22,
+      "balls": 65,
+      "fours": 3,
+      "sixes": 1,
+      "strikeRate": 33.8,
+      "isOnStrike": true,
+      "imageUrl": "https://cricketvectors.akamaized.net/players/org/9M1.png",
+      "jerseyNumber": 18
+    },
+    "nonStriker": {
+      "playerId": "p_1794515071786_2",
+      "name": "Mohammad Taha",
+      "shortName": "Mohammad Taha",
+      "runs": 24,
+      "balls": 55,
+      "fours": 3,
+      "sixes": 1,
+      "strikeRate": 43.6,
+      "isOnStrike": false,
+      "imageUrl": "https://cricketvectors.akamaized.net/players/org/4QQ.png",
+      "jerseyNumber": 7
+    },
+    "currentBowler": {
+      "playerId": "b_1794515071786",
+      "name": "Lahiru Kumara",
+      "shortName": "L Kumara",
+      "overs": 20.5,
+      "maidens": 0,
+      "runs": 15,
+      "wickets": 1,
+      "economy": 4.5,
+      "imageUrl": "https://cricketvectors.akamaized.net/players/org/J4.png",
+      "jerseyNumber": 99
+    },
+    "currentPartnership": {
+      "runs": 46,
+      "balls": 120,
+      "player1Runs": 22,
+      "player2Runs": 24
+    },
+    "recentBalls": [
+      {
+        "id": "b_1794515071786_1",
+        "ballNumber": "21.2",
+        "overNumber": 21,
+        "ballInOver": 2,
+        "runs": 1,
+        "isWicket": false,
+        "isFour": false,
+        "isSix": false,
+        "isExtra": false,
+        "batsmanName": "Azan Awais",
+        "bowlerName": "L Kumara",
+        "commentary": "Azan Awais pushes into the covers for an easy single.",
+        "timestamp": 1794515071786
+      }
+    ],
+    "lastUpdated": 1794515071786,
+    "scorecards": {
+      "firstInnings": {
+        "teamName": "Pakistan",
+        "teamCode": "PAK",
+        "inningsNumber": 1,
+        "totalRuns": 57,
+        "totalWickets": 1,
+        "totalOvers": "21.2",
+        "runRate": 2.67,
+        "extras": {
+          "total": 4,
+          "wides": 2,
+          "noBalls": 0,
+          "byes": 1,
+          "legByes": 1
+        },
+        "fallOfWickets": [],
+        "yetToBat": [],
+        "batting": [
+          {
+            "playerId": "pak_bazam",
+            "name": "Babar Azam",
+            "runs": 19,
+            "balls": 42,
+            "fours": 2,
+            "sixes": 1,
+            "strikeRate": 45.2,
+            "dismissal": "c & b L Kumara",
+            "imageUrl": "https://cricketvectors.akamaized.net/players/org/F2.png",
+            "isNotOut": false
+          },
+          {
+            "playerId": "pak_mrizwan",
+            "name": "Mohammad Rizwan",
+            "runs": 0,
+            "balls": 0,
+            "fours": 0,
+            "sixes": 0,
+            "strikeRate": 0,
+            "dismissal": "yet to bat",
+            "imageUrl": "https://cricketvectors.akamaized.net/players/org/F3.png",
+            "isNotOut": false
+          },
+          {
+            "playerId": "pak_safridi",
+            "name": "Shaheen Afridi",
+            "runs": 0,
+            "balls": 0,
+            "fours": 0,
+            "sixes": 0,
+            "strikeRate": 0,
+            "dismissal": "yet to bat",
+            "imageUrl": "https://commons.wikimedia.org/wiki/Special:FilePath/Shaheen%20Afridi%20(2).jpg?width=400",
+            "isNotOut": false
+          },
+          {
+            "playerId": "pak_nshah",
+            "name": "Naseem Shah",
+            "runs": 0,
+            "balls": 0,
+            "fours": 0,
+            "sixes": 0,
+            "strikeRate": 0,
+            "dismissal": "yet to bat",
+            "imageUrl": "https://cricketvectors.akamaized.net/players/org/3H7.png",
+            "isNotOut": false
+          },
+          {
+            "playerId": "pak_hrauf",
+            "name": "Haris Rauf",
+            "runs": 0,
+            "balls": 0,
+            "fours": 0,
+            "sixes": 0,
+            "strikeRate": 0,
+            "dismissal": "yet to bat",
+            "imageUrl": "https://cricketvectors.akamaized.net/players/org/2U5.png",
+            "isNotOut": false
+          },
+          {
+            "playerId": "pak_fzaman",
+            "name": "Fakhar Zaman",
+            "runs": 0,
+            "balls": 0,
+            "fours": 0,
+            "sixes": 0,
+            "strikeRate": 0,
+            "dismissal": "yet to bat",
+            "imageUrl": "https://cricketvectors.akamaized.net/players/org/1CS.png",
+            "isNotOut": false
+          },
+          {
+            "playerId": "pak_skhan",
+            "name": "Shadab Khan",
+            "runs": 0,
+            "balls": 0,
+            "fours": 0,
+            "sixes": 0,
+            "strikeRate": 0,
+            "dismissal": "yet to bat",
+            "imageUrl": "https://cricketvectors.akamaized.net/players/org/1CT.png",
+            "isNotOut": false
+          },
+          {
+            "playerId": "pak_sayub",
+            "name": "Saim Ayub",
+            "runs": 0,
+            "balls": 0,
+            "fours": 0,
+            "sixes": 0,
+            "strikeRate": 0,
+            "dismissal": "yet to bat",
+            "imageUrl": "https://cricketvectors.akamaized.net/players/org/5M8.png",
+            "isNotOut": false
+          },
+          {
+            "playerId": "pak_aminhas",
+            "name": "Arafat Minhas",
+            "runs": 0,
+            "balls": 0,
+            "fours": 0,
+            "sixes": 0,
+            "strikeRate": 0,
+            "dismissal": "yet to bat",
+            "imageUrl": "https://cricketvectors.akamaized.net/players/org/9ME.png",
+            "isNotOut": false
+          }
+        ],
+        "bowling": [
+          {
+            "playerId": "sl_whasaranga",
+            "name": "Wanindu Hasaranga",
+            "overs": 5,
+            "maidens": 0,
+            "runs": 10,
+            "wickets": 0,
+            "economy": 4.8,
+            "noBalls": 0,
+            "wides": 0,
+            "imageUrl": "https://cricketvectors.akamaized.net/players/org/26C.png"
+          },
+          {
+            "playerId": "sl_mtheekshana",
+            "name": "Maheesh Theekshana",
+            "overs": 5,
+            "maidens": 0,
+            "runs": 10,
+            "wickets": 0,
+            "economy": 4.8,
+            "noBalls": 0,
+            "wides": 0,
+            "imageUrl": "https://cricketvectors.akamaized.net/players/org/34Q.png"
+          },
+          {
+            "playerId": "sl_mpathirana",
+            "name": "Matheesha Pathirana",
+            "overs": 5,
+            "maidens": 0,
+            "runs": 10,
+            "wickets": 0,
+            "economy": 4.8,
+            "noBalls": 0,
+            "wides": 0,
+            "imageUrl": "https://cricketvectors.akamaized.net/players/org/8A7.png"
+          },
+          {
+            "playerId": "sl_dshanaka",
+            "name": "Dasun Shanaka",
+            "overs": 5,
+            "maidens": 0,
+            "runs": 10,
+            "wickets": 0,
+            "economy": 4.8,
+            "noBalls": 0,
+            "wides": 0,
+            "imageUrl": "https://cricketvectors.akamaized.net/players/org/1E5.png"
+          },
+          {
+            "playerId": "sl_dsilva",
+            "name": "Dhananjaya de Silva",
+            "overs": 5,
+            "maidens": 0,
+            "runs": 10,
+            "wickets": 0,
+            "economy": 4.8,
+            "noBalls": 0,
+            "wides": 0,
+            "imageUrl": "https://cricketvectors.akamaized.net/players/org/19B.png"
+          }
+        ]
+      }
+    }
+  }
+}

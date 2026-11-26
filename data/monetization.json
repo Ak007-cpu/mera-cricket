@@ -1,0 +1,29 @@
+{
+  "adsEnabled": false,
+  "adsensePublisherId": "",
+  "slots": {
+    "topBanner": {
+      "enabled": true,
+      "slotId": ""
+    },
+    "inContent": {
+      "enabled": true,
+      "slotId": ""
+    },
+    "footerBanner": {
+      "enabled": true,
+      "slotId": ""
+    }
+  },
+  "sponsor": {
+    "enabled": false,
+    "name": "Official Broadcast Partner",
+    "tagline": "Sponsor your brand across every live delivery",
+    "logoUrl": "",
+    "imageUrl": "",
+    "linkUrl": ""
+  },
+  "siteName": "Live Cricket HD",
+  "contactEmail": "contact@livecrickethd.com",
+  "updatedAt": 1794513841667
+}

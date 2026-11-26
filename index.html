@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script>
+      // Suppress benign [vite] HMR WebSocket close errors in AI Studio Cloud container
+      (function() {
+        var origConsoleError = console.error;
+        var origConsoleWarn = console.warn;
+        function isBenignWsError(args) {
+          for (var i = 0; i < args.length; i++) {
+            var arg = args[i];
+            var str = '';
+            if (typeof arg === 'string') {
+              str = arg;
+            } else if (arg && typeof arg === 'object') {
+              str = (arg.message || '') + ' ' + (arg.stack || '') + ' ' + String(arg);
+            }
+            if (
+              str.indexOf('WebSocket closed without opened') !== -1 ||
+              (str.indexOf('WebSocket') !== -1 && (str.indexOf('closed') !== -1 || str.indexOf('[vite]') !== -1 || str.indexOf('failed') !== -1))
+            ) {
+              return true;
+            }
+          }
+          return false;
+        }
+
+        console.error = function() {
+          if (isBenignWsError(arguments)) return;
+          origConsoleError.apply(console, arguments);
+        };
+        console.warn = function() {
+          if (isBenignWsError(arguments)) return;
+          origConsoleWarn.apply(console, arguments);
+        };
+        window.addEventListener('error', function(event) {
+          var msg = (event && (event.message || (event.error && event.error.message))) || '';
+          if (typeof msg === 'string' && (msg.indexOf('WebSocket') !== -1 || msg.indexOf('closed without opened') !== -1)) {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+            return true;
+          }
+        }, true);
+        window.addEventListener('unhandledrejection', function(event) {
+          var reason = event && event.reason;
+          var reasonStr = (typeof reason === 'object' && reason !== null ? (reason.message || '') + ' ' + (reason.stack || '') : String(reason || ''));
+          if (reasonStr.indexOf('WebSocket') !== -1 || reasonStr.indexOf('closed without opened') !== -1) {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+          }
+        }, true);
+      })();
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Live Cricket HD & Studio</title>
+    <meta name="description" content="Real-time cricket live broadcast graphics, match scoreboard, OBS streaming overlay, and match centre." />
+    <meta property="og:title" content="Live Cricket HD & Studio" />
+    <meta property="og:description" content="Real-time cricket live broadcast graphics, match scoreboard, OBS streaming overlay, and match centre." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="LIVE CRICKET HD" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,500;0,600;0,700;1,700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&family=Noto+Nastaliq+Urdu:wght@400;600;700&family=Noto+Sans+Arabic:wght@500;600;700;800&family=Orbitron:wght@600;700;800;900&family=Poppins:wght@400;500;600;700;800&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

@@ -1,0 +1,1386 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  body {
+    background-color: #f1f5f9;
+    color: #0f172a;
+    font-family: 'Poppins', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    overflow-x: hidden;
+    transition: background-color 180ms ease, color 180ms ease;
+  }
+
+  html.dark body {
+    background-color: #030712;
+    color: #f8fafc;
+  }
+}
+
+/* Transparent root override for OBS Browser Source (?view=overlay) */
+html.obs-transparent,
+html.obs-transparent body {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* Broadcast Sports Score Typography */
+.font-cricket {
+  font-family: 'Chakra Petch', sans-serif;
+}
+
+.font-score {
+  font-family: 'Orbitron', 'Rajdhani', sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+.font-broadcast {
+  font-family: 'Rajdhani', 'Orbitron', sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Clean scrollbar */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Lightweight GPU-Composited Broadcast Animations (OBS-optimized) */
+@keyframes score-flip {
+  0% {
+    opacity: 0.45;
+    transform: translateY(6px) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-score-flip {
+  animation: score-flip 260ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes flash-pulse {
+  0% {
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.animate-flash-pulse {
+  animation: flash-pulse 950ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes wicket-banner-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.92) translateY(-10px);
+  }
+  12% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  85% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.97) translateY(-6px);
+  }
+}
+
+.animate-wicket-banner {
+  animation: wicket-banner-pop 3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes ball-callout-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.88);
+  }
+  15% {
+    opacity: 1;
+    transform: translateY(0) scale(1.03);
+  }
+  24% {
+    transform: translateY(0) scale(1);
+  }
+  82% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.96);
+  }
+}
+
+.animate-ball-callout {
+  animation: ball-callout-pop 1.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes ball-pop-1s {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -10px, 0) scale(0.92);
+  }
+  18% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  82% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(0, -6px, 0) scale(0.96);
+  }
+}
+
+.animate-ball-1s {
+  animation: ball-pop-1s 1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+@keyframes ball-pop-3s {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -14px, 0) scale(0.92);
+  }
+  10% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  88% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(0, -8px, 0) scale(0.96);
+  }
+}
+
+.animate-ball-3s {
+  animation: ball-pop-3s 3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+@keyframes six-zoom-3s {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -12px, 0) scale(0.88);
+  }
+  12% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1.07);
+  }
+  26% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1.03);
+  }
+  88% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1.02);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(0, -6px, 0) scale(0.97);
+  }
+}
+
+.animate-six-zoom {
+  animation: six-zoom-3s 3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+@keyframes flash-pulse-3s {
+  0% {
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  45% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.animate-flash-3s {
+  animation: flash-pulse-3s 3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: opacity;
+}
+
+/* Match Winner Celebration Animations */
+@keyframes celebration-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+@keyframes float-sparkle {
+  0%, 100% {
+    transform: translateY(0px) scale(1) rotate(0deg);
+    opacity: 0.85;
+  }
+  50% {
+    transform: translateY(-6px) scale(1.1) rotate(180deg);
+    opacity: 1;
+  }
+}
+
+.animate-shimmer {
+  animation: celebration-shimmer 2.8s infinite linear;
+}
+
+.animate-float-sparkle {
+  animation: float-sparkle 3s ease-in-out infinite;
+}
+
+@keyframes ticker-marquee {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+.animate-ticker-marquee {
+  animation: ticker-marquee 26s linear infinite;
+}
+
+.animate-match-ticker {
+  animation: ticker-marquee 34s linear infinite;
+  will-change: transform;
+}
+
+.animate-ticker-marquee:hover,
+.animate-match-ticker:hover,
+.animate-match-ticker:focus-within,
+.ticker-paused {
+  animation-play-state: paused !important;
+}
+
+/* Subtle GPU-Composited Broadcast Ambient Background & LIVE Dot (OBS-safe) */
+@keyframes broadcast-ambient-drift {
+  0%, 100% {
+    transform: translate3d(-2%, -1%, 0) scale(1);
+    opacity: 0.55;
+  }
+  50% {
+    transform: translate3d(2%, 1.5%, 0) scale(1.06);
+    opacity: 0.78;
+  }
+}
+
+.animate-broadcast-ambient {
+  animation: broadcast-ambient-drift 20s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+@keyframes live-dot-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.35);
+    opacity: 0.45;
+  }
+}
+
+.animate-live-dot {
+  animation: live-dot-pulse 1.6s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+/* Mobile Stadium-Light Glow & 1s Flash */
+@keyframes stadium-glow-pulse {
+  0%, 100% {
+    transform: translate3d(0, -1%, 0) scale(1);
+    opacity: 0.65;
+  }
+  50% {
+    transform: translate3d(0, 1.5%, 0) scale(1.06);
+    opacity: 0.9;
+  }
+}
+
+.animate-stadium-glow {
+  animation: stadium-glow-pulse 12s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+@keyframes flash-pulse-1s {
+  0% {
+    opacity: 0;
+  }
+  18% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.animate-flash-1s {
+  animation: flash-pulse-1s 1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: opacity;
+}
+
+/* Mobile Top-Down Pitch & Ball Animations (GPU-composited) */
+@keyframes pitch-idle-glow {
+  0%, 100% {
+    opacity: 0.45;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.03);
+  }
+}
+
+.animate-pitch-idle {
+  animation: pitch-idle-glow 3.8s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+/* Ball travels from bowler end (0) to batter end (+116px) and stops (DOT BALL, 1s) */
+@keyframes ball-delivery-dot {
+  0% {
+    opacity: 0;
+    transform: translate3d(0px, 0px, 0) scale(0.75);
+  }
+  12% {
+    opacity: 1;
+    transform: translate3d(18px, -2px, 0) scale(1);
+  }
+  62% {
+    opacity: 1;
+    transform: translate3d(118px, 0px, 0) scale(1);
+  }
+  88% {
+    opacity: 1;
+    transform: translate3d(122px, 0px, 0) scale(0.95);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(122px, 0px, 0) scale(0.85);
+  }
+}
+
+.animate-pitch-ball-dot {
+  animation: ball-delivery-dot 1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: transform, opacity;
+}
+
+/* Ball travels to batter then deflects into outfield (1-3 RUNS, 1s) */
+@keyframes ball-delivery-run {
+  0% {
+    opacity: 0;
+    transform: translate3d(0px, 0px, 0) scale(0.75);
+  }
+  10% {
+    opacity: 1;
+    transform: translate3d(16px, -2px, 0) scale(1);
+  }
+  42% {
+    opacity: 1;
+    transform: translate3d(118px, 0px, 0) scale(1);
+  }
+  80% {
+    opacity: 1;
+    transform: translate3d(78px, -34px, 0) scale(0.95);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(76px, -36px, 0) scale(0.85);
+  }
+}
+
+.animate-pitch-ball-run {
+  animation: ball-delivery-run 1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: transform, opacity;
+}
+
+/* Landing marker dot left in outfield for 1-3 runs */
+@keyframes outfield-mark-pop {
+  0%, 55% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  72% {
+    opacity: 1;
+    transform: scale(1.25);
+  }
+  100% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+}
+
+.animate-outfield-mark {
+  animation: outfield-mark-pop 1s ease-out forwards;
+  will-change: transform, opacity;
+}
+
+/* Batters dashing between creases for 1-3 runs */
+@keyframes batter-dash-right {
+  0%, 35% {
+    transform: translate3d(0px, 0px, 0);
+  }
+  68% {
+    transform: translate3d(-102px, 0px, 0);
+  }
+  100% {
+    transform: translate3d(-24px, 0px, 0);
+  }
+}
+
+@keyframes batter-dash-left {
+  0%, 35% {
+    transform: translate3d(0px, 0px, 0);
+  }
+  68% {
+    transform: translate3d(102px, 0px, 0);
+  }
+  100% {
+    transform: translate3d(24px, 0px, 0);
+  }
+}
+
+.animate-batter-dash-a {
+  animation: batter-dash-right 1s ease-in-out forwards;
+  will-change: transform;
+}
+
+.animate-batter-dash-b {
+  animation: batter-dash-left 1s ease-in-out forwards;
+  will-change: transform;
+}
+
+/* Ball travels, gets hit, bounces/skids to boundary rope (FOUR!, 3s) */
+@keyframes ball-delivery-four {
+  0% {
+    opacity: 0;
+    transform: translate3d(0px, 0px, 0) scale(0.8);
+  }
+  8% {
+    opacity: 1;
+    transform: translate3d(24px, -2px, 0) scale(1);
+  }
+  24% {
+    opacity: 1;
+    transform: translate3d(120px, 0px, 0) scale(1.05);
+  }
+  38% {
+    opacity: 1;
+    transform: translate3d(146px, -22px, 0) scale(1.25);
+  }
+  52% {
+    opacity: 1;
+    transform: translate3d(172px, -36px, 0) scale(0.95);
+  }
+  70% {
+    opacity: 1;
+    transform: translate3d(194px, -42px, 0) scale(1.1);
+  }
+  88% {
+    opacity: 1;
+    transform: translate3d(198px, -43px, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(200px, -43px, 0) scale(0.9);
+  }
+}
+
+.animate-pitch-ball-four {
+  animation: ball-delivery-four 3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+/* Ball travels, gets launched high & large out of stadium (SIX!, 3s) */
+@keyframes ball-delivery-six {
+  0% {
+    opacity: 0;
+    transform: translate3d(0px, 0px, 0) scale(0.8);
+  }
+  8% {
+    opacity: 1;
+    transform: translate3d(24px, -2px, 0) scale(1);
+  }
+  22% {
+    opacity: 1;
+    transform: translate3d(120px, 0px, 0) scale(1.05);
+  }
+  48% {
+    opacity: 1;
+    transform: translate3d(164px, -28px, 0) scale(2.05);
+  }
+  76% {
+    opacity: 1;
+    transform: translate3d(225px, -52px, 0) scale(2.35);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(265px, -68px, 0) scale(1.5);
+  }
+}
+
+.animate-pitch-ball-six {
+  animation: ball-delivery-six 3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+/* Ball crashes into stumps (WICKET!, 3s) */
+@keyframes ball-delivery-wicket {
+  0% {
+    opacity: 0;
+    transform: translate3d(0px, 0px, 0) scale(0.8);
+  }
+  10% {
+    opacity: 1;
+    transform: translate3d(30px, 1px, 0) scale(1);
+  }
+  28% {
+    opacity: 1;
+    transform: translate3d(134px, 0px, 0) scale(1.12);
+  }
+  44% {
+    opacity: 0.9;
+    transform: translate3d(152px, -8px, 0) scale(0.92);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(158px, -10px, 0) scale(0.8);
+  }
+}
+
+.animate-pitch-ball-wicket {
+  animation: ball-delivery-wicket 3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+/* Scattered stumps at batter end on WICKET */
+@keyframes stump-scatter-top {
+  0%, 24% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+    opacity: 1;
+  }
+  42%, 85% {
+    transform: translate3d(12px, -11px, 0) rotate(-48deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+    opacity: 0.9;
+  }
+}
+
+@keyframes stump-scatter-mid {
+  0%, 24% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+    opacity: 1;
+  }
+  42%, 85% {
+    transform: translate3d(16px, 2px, 0) rotate(68deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+    opacity: 0.9;
+  }
+}
+
+@keyframes stump-scatter-bot {
+  0%, 24% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+    opacity: 1;
+  }
+  42%, 85% {
+    transform: translate3d(9px, 12px, 0) rotate(36deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+    opacity: 0.9;
+  }
+}
+
+.animate-stump-top {
+  animation: stump-scatter-top 3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+.animate-stump-mid {
+  animation: stump-scatter-mid 3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+.animate-stump-bot {
+  animation: stump-scatter-bot 3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+/* Wide / No-Ball trajectory */
+@keyframes ball-delivery-wide {
+  0% {
+    opacity: 0;
+    transform: translate3d(0px, 0px, 0) scale(0.8);
+  }
+  15% {
+    opacity: 1;
+    transform: translate3d(20px, -4px, 0) scale(1);
+  }
+  75% {
+    opacity: 1;
+    transform: translate3d(136px, -22px, 0) scale(0.95);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(144px, -24px, 0) scale(0.85);
+  }
+}
+
+.animate-pitch-ball-wide {
+  animation: ball-delivery-wide 1s ease-out forwards;
+  will-change: transform, opacity;
+}
+
+/* No-Match Idle Bat & Ball Loop Animation (GPU-only, 7.2s 3-direction cycle) */
+@keyframes nomatch-bat-swing {
+  0%, 33%, 66%, 100% {
+    transform: rotate(-14deg);
+  }
+  6%, 39%, 72% {
+    transform: rotate(-28deg);
+  }
+  10.5%, 43.8%, 77.1% {
+    transform: rotate(22deg);
+  }
+  18%, 51%, 84% {
+    transform: rotate(6deg);
+  }
+  26%, 59%, 92% {
+    transform: rotate(-14deg);
+  }
+}
+
+@keyframes nomatch-ball-loop {
+  /* Shot 1: High loft up-left into stadium */
+  0% {
+    opacity: 0;
+    transform: translate3d(20px, -110px, 0) scale(0.82);
+  }
+  2.5% {
+    opacity: 1;
+    transform: translate3d(14px, -88px, 0) scale(0.92);
+  }
+  10% {
+    opacity: 1;
+    transform: translate3d(0px, 4px, 0) scale(1.06);
+  }
+  18% {
+    opacity: 0.95;
+    transform: translate3d(-44px, -78px, 0) scale(0.75);
+  }
+  28% {
+    opacity: 0;
+    transform: translate3d(-78px, -134px, 0) scale(0.28);
+  }
+  33% {
+    opacity: 0;
+    transform: translate3d(-18px, -110px, 0) scale(0.82);
+  }
+
+  /* Shot 2: Crisp side drive right */
+  35.5% {
+    opacity: 1;
+    transform: translate3d(-12px, -88px, 0) scale(0.92);
+  }
+  43.3% {
+    opacity: 1;
+    transform: translate3d(0px, 4px, 0) scale(1.06);
+  }
+  52% {
+    opacity: 0.95;
+    transform: translate3d(84px, -22px, 0) scale(0.76);
+  }
+  61% {
+    opacity: 0;
+    transform: translate3d(138px, -46px, 0) scale(0.32);
+  }
+  66% {
+    opacity: 0;
+    transform: translate3d(10px, -110px, 0) scale(0.82);
+  }
+
+  /* Shot 3: Straight/diagonal stadium loft up-right */
+  68.8% {
+    opacity: 1;
+    transform: translate3d(8px, -88px, 0) scale(0.92);
+  }
+  76.6% {
+    opacity: 1;
+    transform: translate3d(0px, 4px, 0) scale(1.06);
+  }
+  85% {
+    opacity: 0.95;
+    transform: translate3d(52px, -84px, 0) scale(0.72);
+  }
+  94% {
+    opacity: 0;
+    transform: translate3d(90px, -138px, 0) scale(0.28);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(20px, -110px, 0) scale(0.82);
+  }
+}
+
+@keyframes nomatch-impact-flash {
+  0%, 9%, 17%, 33%, 42.3%, 50%, 66%, 75.6%, 83%, 100% {
+    opacity: 0;
+    transform: scale(0.35);
+  }
+  10.3%, 43.6%, 76.9% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+  14%, 47.3%, 80.6% {
+    opacity: 0;
+    transform: scale(1.55);
+  }
+}
+
+@keyframes nomatch-burst-blue {
+  0%, 9.2%, 18%, 33%, 42.5%, 51%, 66%, 75.8%, 84%, 100% {
+    opacity: 0;
+    transform: translate3d(0px, 0px, 0) scale(0.4);
+  }
+  10.5%, 43.8%, 77.1% {
+    opacity: 1;
+    transform: translate3d(-16px, -18px, 0) scale(1.15);
+  }
+  16%, 49%, 82% {
+    opacity: 0;
+    transform: translate3d(-32px, -34px, 0) scale(0.6);
+  }
+}
+
+@keyframes nomatch-burst-gold {
+  0%, 9.2%, 18%, 33%, 42.5%, 51%, 66%, 75.8%, 84%, 100% {
+    opacity: 0;
+    transform: translate3d(0px, 0px, 0) scale(0.4);
+  }
+  10.5%, 43.8%, 77.1% {
+    opacity: 1;
+    transform: translate3d(18px, -16px, 0) scale(1.2);
+  }
+  16%, 49%, 82% {
+    opacity: 0;
+    transform: translate3d(34px, -30px, 0) scale(0.6);
+  }
+}
+
+@keyframes nomatch-burst-green {
+  0%, 9.2%, 18%, 33%, 42.5%, 51%, 66%, 75.8%, 84%, 100% {
+    opacity: 0;
+    transform: translate3d(0px, 0px, 0) scale(0.4);
+  }
+  10.5%, 43.8%, 77.1% {
+    opacity: 1;
+    transform: translate3d(4px, 16px, 0) scale(1.1);
+  }
+  16%, 49%, 82% {
+    opacity: 0;
+    transform: translate3d(10px, 32px, 0) scale(0.55);
+  }
+}
+
+.animate-nomatch-bat {
+  transform-origin: 50% 82%;
+  animation: nomatch-bat-swing 7.2s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  will-change: transform;
+}
+
+.animate-nomatch-ball {
+  animation: nomatch-ball-loop 7.2s linear infinite;
+  will-change: transform, opacity;
+}
+
+.animate-nomatch-flash {
+  animation: nomatch-impact-flash 7.2s ease-out infinite;
+  will-change: transform, opacity;
+}
+
+.animate-nomatch-burst-blue {
+  animation: nomatch-burst-blue 7.2s ease-out infinite;
+  will-change: transform, opacity;
+}
+
+.animate-nomatch-burst-gold {
+  animation: nomatch-burst-gold 7.2s ease-out infinite;
+  will-change: transform, opacity;
+}
+
+.animate-nomatch-burst-green {
+  animation: nomatch-burst-green 7.2s ease-out infinite;
+  will-change: transform, opacity;
+}
+
+/* Live Animated Match Card (TV Broadcast Card Scene) */
+@keyframes card-bowler-runup {
+  0% { transform: translate3d(-28px, 0, 0); }
+  30% { transform: translate3d(0px, -2px, 0); }
+  45% { transform: translate3d(4px, 0, 0); }
+  100% { transform: translate3d(0px, 0, 0); }
+}
+
+@keyframes card-bowler-arm-spin {
+  0% { transform: rotate(0deg); }
+  28% { transform: rotate(-160deg); }
+  42% { transform: rotate(-320deg); }
+  55% { transform: rotate(-360deg); }
+  100% { transform: rotate(-360deg); }
+}
+
+@keyframes card-batter-defend {
+  0%, 28% { transform: translate3d(0, 0, 0) rotate(0deg); }
+  46% { transform: translate3d(-5px, 1px, 0) rotate(-10deg); }
+  75% { transform: translate3d(-3px, 0, 0) rotate(-6deg); }
+  100% { transform: translate3d(0, 0, 0) rotate(0deg); }
+}
+
+@keyframes card-batter-swing {
+  0%, 24% { transform: rotate(0deg); }
+  42% { transform: rotate(28deg); }
+  56% { transform: rotate(-72deg); }
+  78% { transform: rotate(-30deg); }
+  100% { transform: rotate(0deg); }
+}
+
+@keyframes card-batter-walkoff {
+  0%, 34% { opacity: 1; transform: translate3d(0, 0, 0) rotate(0deg); }
+  48% { opacity: 1; transform: translate3d(6px, -6px, 0) rotate(12deg); }
+  88% { opacity: 0.75; transform: translate3d(68px, -28px, 0) rotate(16deg); }
+  100% { opacity: 0; transform: translate3d(84px, -34px, 0) rotate(18deg); }
+}
+
+@keyframes card-head-bow {
+  0%, 36% { transform: translate3d(0, 0, 0) rotate(0deg); }
+  52%, 100% { transform: translate3d(-1px, 2px, 0) rotate(24deg); }
+}
+
+@keyframes card-runner-odd-striker {
+  0%, 40% { transform: translate3d(0, 0, 0); }
+  85%, 100% { transform: translate3d(-128px, -10px, 0); }
+}
+
+@keyframes card-runner-odd-nonstriker {
+  0%, 40% { transform: translate3d(0, 0, 0); }
+  85%, 100% { transform: translate3d(128px, 10px, 0); }
+}
+
+@keyframes card-runner-two-striker {
+  0%, 36% { transform: translate3d(0, 0, 0); }
+  66% { transform: translate3d(-128px, -10px, 0); }
+  94%, 100% { transform: translate3d(0, 0, 0); }
+}
+
+@keyframes card-runner-two-nonstriker {
+  0%, 36% { transform: translate3d(0, 0, 0); }
+  66% { transform: translate3d(128px, 10px, 0); }
+  94%, 100% { transform: translate3d(0, 0, 0); }
+}
+
+@keyframes card-fielder-chase {
+  0%, 40% { transform: translate3d(0, 0, 0); }
+  68% { transform: translate3d(14px, 10px, 0); }
+  100% { transform: translate3d(4px, 3px, 0); }
+}
+
+@keyframes card-umpire-arms-wide {
+  0%, 28% { transform: rotate(0deg); }
+  45%, 88% { transform: rotate(-68deg); }
+  100% { transform: rotate(0deg); }
+}
+
+@keyframes card-umpire-arms-wide-r {
+  0%, 28% { transform: rotate(0deg); }
+  45%, 88% { transform: rotate(68deg); }
+  100% { transform: rotate(0deg); }
+}
+
+@keyframes card-umpire-arm-noball {
+  0%, 28% { transform: rotate(0deg); }
+  45%, 88% { transform: rotate(-92deg); }
+  100% { transform: rotate(0deg); }
+}
+
+@keyframes card-ball-dot {
+  0% { opacity: 0; transform: translate3d(126px, 98px, 0) scale(0.8); }
+  16% { opacity: 1; transform: translate3d(138px, 94px, 0) scale(0.9); }
+  36% { opacity: 1; transform: translate3d(216px, 112px, 0) scale(1); }
+  50% { opacity: 1; transform: translate3d(268px, 106px, 0) scale(1.05); }
+  68% { opacity: 1; transform: translate3d(252px, 114px, 0) scale(0.92); }
+  100% { opacity: 0; transform: translate3d(246px, 116px, 0) scale(0.75); }
+}
+
+@keyframes card-ball-run {
+  0% { opacity: 0; transform: translate3d(126px, 98px, 0) scale(0.8); }
+  14% { opacity: 1; transform: translate3d(138px, 94px, 0) scale(0.92); }
+  32% { opacity: 1; transform: translate3d(216px, 112px, 0) scale(1); }
+  44% { opacity: 1; transform: translate3d(270px, 106px, 0) scale(1.08); }
+  74% { opacity: 1; transform: translate3d(334px, 60px, 0) scale(0.85); }
+  100% { opacity: 0; transform: translate3d(342px, 56px, 0) scale(0.7); }
+}
+
+@keyframes card-ball-four {
+  0% { opacity: 0; transform: translate3d(126px, 98px, 0) scale(0.8); }
+  12% { opacity: 1; transform: translate3d(138px, 94px, 0) scale(0.95); }
+  26% { opacity: 1; transform: translate3d(216px, 112px, 0) scale(1); }
+  38% { opacity: 1; transform: translate3d(270px, 106px, 0) scale(1.1); }
+  52% { opacity: 1; transform: translate3d(320px, 136px, 0) scale(1); }
+  63% { opacity: 1; transform: translate3d(348px, 126px, 0) scale(0.96); }
+  76% { opacity: 1; transform: translate3d(378px, 146px, 0) scale(0.92); }
+  88% { opacity: 1; transform: translate3d(396px, 144px, 0) scale(0.92); }
+  100% { opacity: 0; transform: translate3d(404px, 146px, 0) scale(0.7); }
+}
+
+@keyframes card-ball-six {
+  0% { opacity: 0; transform: translate3d(126px, 98px, 0) scale(0.8); }
+  12% { opacity: 1; transform: translate3d(138px, 94px, 0) scale(0.95); }
+  25% { opacity: 1; transform: translate3d(216px, 112px, 0) scale(1); }
+  37% { opacity: 1; transform: translate3d(270px, 106px, 0) scale(1.15); }
+  60% { opacity: 1; transform: translate3d(340px, 34px, 0) scale(1.65); }
+  82% { opacity: 0.95; transform: translate3d(398px, -12px, 0) scale(1.25); }
+  100% { opacity: 0; transform: translate3d(432px, -32px, 0) scale(0.65); }
+}
+
+@keyframes card-ball-wicket {
+  0% { opacity: 0; transform: translate3d(126px, 98px, 0) scale(0.8); }
+  12% { opacity: 1; transform: translate3d(138px, 94px, 0) scale(0.95); }
+  28% { opacity: 1; transform: translate3d(216px, 112px, 0) scale(1); }
+  40% { opacity: 1; transform: translate3d(286px, 104px, 0) scale(1.15); }
+  64% { opacity: 0.9; transform: translate3d(312px, 94px, 0) scale(0.88); }
+  100% { opacity: 0; transform: translate3d(324px, 98px, 0) scale(0.6); }
+}
+
+@keyframes card-ball-wide {
+  0% { opacity: 0; transform: translate3d(126px, 98px, 0) scale(0.8); }
+  16% { opacity: 1; transform: translate3d(138px, 94px, 0) scale(0.95); }
+  38% { opacity: 1; transform: translate3d(216px, 88px, 0) scale(1); }
+  68% { opacity: 1; transform: translate3d(292px, 74px, 0) scale(0.9); }
+  100% { opacity: 0; transform: translate3d(308px, 72px, 0) scale(0.75); }
+}
+
+@keyframes card-stump-left {
+  0%, 38% { transform: translate3d(0, 0, 0) rotate(0deg); }
+  58%, 100% { transform: translate3d(14px, -10px, 0) rotate(48deg); }
+}
+
+@keyframes card-stump-center {
+  0%, 38% { transform: translate3d(0, 0, 0) rotate(0deg); }
+  58%, 100% { transform: translate3d(22px, 4px, 0) rotate(72deg); }
+}
+
+@keyframes card-stump-right {
+  0%, 38% { transform: translate3d(0, 0, 0) rotate(0deg); }
+  58%, 100% { transform: translate3d(16px, 12px, 0) rotate(-52deg); }
+}
+
+@keyframes card-card-flash {
+  0% { opacity: 0; }
+  36% { opacity: 0; }
+  46% { opacity: 0.45; }
+  65% { opacity: 0.2; }
+  100% { opacity: 0; }
+}
+
+@keyframes card-callout-pop {
+  0%, 30% { opacity: 0; transform: translate3d(0, 10px, 0) scale(0.82); }
+  44% { opacity: 1; transform: translate3d(0, 0, 0) scale(1.06); }
+  85% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  100% { opacity: 0; transform: translate3d(0, -6px, 0) scale(0.96); }
+}
+
+.card-bowler-run {
+  animation: card-bowler-runup 0.95s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: transform;
+}
+.card-bowler-arm {
+  transform-box: fill-box;
+  transform-origin: 50% 15%;
+  animation: card-bowler-arm-spin 0.95s ease-in-out forwards;
+  will-change: transform;
+}
+.card-batter-defend {
+  transform-box: fill-box;
+  transform-origin: 50% 90%;
+  animation: card-batter-defend 0.95s ease-out forwards;
+  will-change: transform;
+}
+.card-batter-swing {
+  transform-box: fill-box;
+  transform-origin: 35% 35%;
+  animation: card-batter-swing 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  will-change: transform;
+}
+.card-batter-walkoff {
+  animation: card-batter-walkoff 2.7s ease-in-out forwards;
+  will-change: transform, opacity;
+}
+.card-head-bow {
+  transform-box: fill-box;
+  transform-origin: 50% 80%;
+  animation: card-head-bow 2.7s ease-out forwards;
+  will-change: transform;
+}
+.card-runner-odd-a {
+  animation: card-runner-odd-striker 0.95s ease-in-out forwards;
+  will-change: transform;
+}
+.card-runner-odd-b {
+  animation: card-runner-odd-nonstriker 0.95s ease-in-out forwards;
+  will-change: transform;
+}
+.card-runner-two-a {
+  animation: card-runner-two-striker 0.95s ease-in-out forwards;
+  will-change: transform;
+}
+.card-runner-two-b {
+  animation: card-runner-two-nonstriker 0.95s ease-in-out forwards;
+  will-change: transform;
+}
+.card-fielder-chase {
+  animation: card-fielder-chase 1.15s ease-out forwards;
+  will-change: transform;
+}
+
+@keyframes card-fielder-chase-a {
+  0%, 38% { transform: translate3d(0, 0, 0); }
+  66% { transform: translate3d(18px, 12px, 0); }
+  100% { transform: translate3d(5px, 3px, 0); }
+}
+
+@keyframes card-fielder-chase-b {
+  0%, 38% { transform: translate3d(0, 0, 0); }
+  66% { transform: translate3d(22px, 22px, 0); }
+  100% { transform: translate3d(8px, 7px, 0); }
+}
+
+@keyframes card-fielder-chase-c {
+  0%, 38% { transform: translate3d(0, 0, 0); }
+  66% { transform: translate3d(-14px, -16px, 0); }
+  100% { transform: translate3d(-4px, -5px, 0); }
+}
+
+.card-fielder-chase-a {
+  animation: card-fielder-chase-a 1.25s ease-out forwards;
+  will-change: transform;
+}
+.card-fielder-chase-b {
+  animation: card-fielder-chase-b 1.25s ease-out forwards;
+  will-change: transform;
+}
+.card-fielder-chase-c {
+  animation: card-fielder-chase-c 1.25s ease-out forwards;
+  will-change: transform;
+}
+
+/* Continuous Idle Animations for Live Ground TV Card (GPU-only) */
+@keyframes card-idle-bowler-loop {
+  0%, 100% { transform: translate3d(-12px, 0px, 0); }
+  28% { transform: translate3d(-4px, -1.6px, 0); }
+  48% { transform: translate3d(2px, 0px, 0); }
+  74% { transform: translate3d(-6px, -1.2px, 0); }
+}
+
+@keyframes card-idle-bowler-arm-loop {
+  0%, 100% { transform: rotate(4deg); }
+  48% { transform: rotate(-18deg); }
+  74% { transform: rotate(8deg); }
+}
+
+@keyframes card-idle-batter-loop {
+  0%, 100% { transform: translate3d(0px, 0px, 0); }
+  50% { transform: translate3d(-1.4px, 0.9px, 0); }
+}
+
+@keyframes card-idle-bat-tap {
+  0%, 100% { transform: rotate(0deg); }
+  35% { transform: rotate(-8deg); }
+  50% { transform: rotate(3deg); }
+  75% { transform: rotate(-5deg); }
+}
+
+@keyframes card-idle-nonstriker-loop {
+  0%, 100% { transform: translate3d(0px, 0px, 0); }
+  50% { transform: translate3d(1.4px, -1.1px, 0); }
+}
+
+@keyframes card-idle-fielder-sway-a {
+  0%, 100% { transform: translate3d(0px, 0px, 0); }
+  50% { transform: translate3d(5px, 2.5px, 0); }
+}
+
+@keyframes card-idle-fielder-sway-b {
+  0%, 100% { transform: translate3d(0px, 0px, 0); }
+  50% { transform: translate3d(-5px, 3.5px, 0); }
+}
+
+@keyframes card-idle-fielder-sway-c {
+  0%, 100% { transform: translate3d(0px, 0px, 0); }
+  50% { transform: translate3d(4px, -3.5px, 0); }
+}
+
+@keyframes card-idle-turf-glow {
+  0%, 100% { opacity: 0.14; transform: scale(1); }
+  50% { opacity: 0.3; transform: scale(1.03); }
+}
+
+.card-idle-bowler {
+  animation: card-idle-bowler-loop 3.4s ease-in-out infinite;
+  will-change: transform;
+}
+.card-idle-bowler-arm {
+  transform-box: fill-box;
+  transform-origin: 50% 80%;
+  animation: card-idle-bowler-arm-loop 3.4s ease-in-out infinite;
+  will-change: transform;
+}
+.card-idle-batter {
+  animation: card-idle-batter-loop 2.5s ease-in-out infinite;
+  will-change: transform;
+}
+.card-idle-bat {
+  transform-box: fill-box;
+  transform-origin: 35% 20%;
+  animation: card-idle-bat-tap 2.5s ease-in-out infinite;
+  will-change: transform;
+}
+.card-idle-nonstriker {
+  animation: card-idle-nonstriker-loop 3.1s ease-in-out infinite;
+  will-change: transform;
+}
+.card-idle-fielder-a {
+  animation: card-idle-fielder-sway-a 3.8s ease-in-out infinite;
+  will-change: transform;
+}
+.card-idle-fielder-b {
+  animation: card-idle-fielder-sway-b 4.3s ease-in-out infinite;
+  will-change: transform;
+}
+.card-idle-fielder-c {
+  animation: card-idle-fielder-sway-c 4s ease-in-out infinite;
+  will-change: transform;
+}
+.card-idle-turf {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: card-idle-turf-glow 4.8s ease-in-out infinite;
+  will-change: opacity, transform;
+}
+.card-umpire-wide-l {
+  transform-box: fill-box;
+  transform-origin: 80% 50%;
+  animation: card-umpire-arms-wide 0.95s ease-out forwards;
+}
+.card-umpire-wide-r {
+  transform-box: fill-box;
+  transform-origin: 20% 50%;
+  animation: card-umpire-arms-wide-r 0.95s ease-out forwards;
+}
+.card-umpire-noball {
+  transform-box: fill-box;
+  transform-origin: 80% 50%;
+  animation: card-umpire-arm-noball 0.95s ease-out forwards;
+}
+.card-ball-dot { animation: card-ball-dot 0.95s ease-out forwards; will-change: transform, opacity; }
+.card-ball-run { animation: card-ball-run 0.95s ease-out forwards; will-change: transform, opacity; }
+.card-ball-four { animation: card-ball-four 2.1s cubic-bezier(0.22, 1, 0.36, 1) forwards; will-change: transform, opacity; }
+.card-ball-six { animation: card-ball-six 2.2s cubic-bezier(0.22, 1, 0.36, 1) forwards; will-change: transform, opacity; }
+.card-ball-wicket { animation: card-ball-wicket 1.6s ease-out forwards; will-change: transform, opacity; }
+.card-ball-wide { animation: card-ball-wide 0.95s ease-out forwards; will-change: transform, opacity; }
+.card-stump-l { transform-box: fill-box; transform-origin: 50% 100%; animation: card-stump-left 2.4s ease-out forwards; }
+.card-stump-m { transform-box: fill-box; transform-origin: 50% 100%; animation: card-stump-center 2.4s ease-out forwards; }
+.card-stump-r { transform-box: fill-box; transform-origin: 50% 100%; animation: card-stump-right 2.4s ease-out forwards; }
+.card-flash-overlay { animation: card-card-flash 1.6s ease-out forwards; will-change: opacity; }
+.card-callout-pop { animation: card-callout-pop 1.8s cubic-bezier(0.22, 1, 0.36, 1) forwards; will-change: transform, opacity; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-score-flip,
+  .animate-flash-pulse,
+  .animate-wicket-banner,
+  .animate-ball-callout,
+  .animate-ball-1s,
+  .animate-ball-3s,
+  .animate-six-zoom,
+  .animate-flash-3s,
+  .animate-flash-1s,
+  .animate-stadium-glow,
+  .animate-pitch-idle,
+  .animate-pitch-ball-dot,
+  .animate-pitch-ball-run,
+  .animate-outfield-mark,
+  .animate-batter-dash-a,
+  .animate-batter-dash-b,
+  .animate-pitch-ball-four,
+  .animate-pitch-ball-six,
+  .animate-pitch-ball-wicket,
+  .animate-stump-top,
+  .animate-stump-mid,
+  .animate-stump-bot,
+  .animate-pitch-ball-wide,
+  .animate-nomatch-bat,
+  .animate-nomatch-ball,
+  .animate-nomatch-flash,
+  .animate-nomatch-burst-blue,
+  .animate-nomatch-burst-gold,
+  .animate-nomatch-burst-green,
+  .card-bowler-run,
+  .card-bowler-arm,
+  .card-batter-defend,
+  .card-batter-swing,
+  .card-batter-walkoff,
+  .card-head-bow,
+  .card-runner-odd-a,
+  .card-runner-odd-b,
+  .card-runner-two-a,
+  .card-runner-two-b,
+  .card-fielder-chase,
+  .card-fielder-chase-a,
+  .card-fielder-chase-b,
+  .card-fielder-chase-c,
+  .card-idle-bowler,
+  .card-idle-bowler-arm,
+  .card-idle-batter,
+  .card-idle-bat,
+  .card-idle-nonstriker,
+  .card-idle-fielder-a,
+  .card-idle-fielder-b,
+  .card-idle-fielder-c,
+  .card-idle-turf,
+  .card-umpire-wide-l,
+  .card-umpire-wide-r,
+  .card-umpire-noball,
+  .card-ball-dot,
+  .card-ball-run,
+  .card-ball-four,
+  .card-ball-six,
+  .card-ball-wicket,
+  .card-ball-wide,
+  .card-stump-l,
+  .card-stump-m,
+  .card-stump-r,
+  .card-flash-overlay,
+  .card-callout-pop,
+  .animate-shimmer,
+  .animate-float-sparkle,
+  .animate-ticker-marquee,
+  .animate-match-ticker,
+  .animate-broadcast-ambient,
+  .animate-live-dot,
+  .animate-anchor-breathe,
+  .animate-anchor-speak,
+  .animate-eq-bar,
+  .animate-download-bounce-in {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* AI Sports News Urdu Studio Typography & GPU-Composited Presenter Motion */
+.font-urdu {
+  font-family: 'Noto Sans Arabic', 'Noto Nastaliq Urdu', 'Jameel Noori Nastaleeq', Tahoma, sans-serif;
+  line-height: 1.75;
+}
+
+.font-urdu-headline {
+  font-family: 'Noto Nastaliq Urdu', 'Noto Sans Arabic', serif;
+  line-height: 1.9;
+}
+
+@keyframes anchor-breathe {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -3px, 0) scale(1.008);
+  }
+}
+
+@keyframes anchor-speak {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1.01) rotate(0deg);
+  }
+  25% {
+    transform: translate3d(1px, -3px, 0) scale(1.018) rotate(0.35deg);
+  }
+  65% {
+    transform: translate3d(-1px, -2px, 0) scale(1.014) rotate(-0.3deg);
+  }
+}
+
+@keyframes eq-bar-dance {
+  0%, 100% {
+    transform: scaleY(0.28);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.animate-anchor-breathe {
+  animation: anchor-breathe 4.6s ease-in-out infinite;
+  will-change: transform;
+}
+
+.animate-anchor-speak {
+  animation: anchor-speak 1.6s ease-in-out infinite;
+  will-change: transform;
+}
+
+.animate-eq-bar {
+  transform-origin: bottom center;
+  animation: eq-bar-dance 0.65s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes download-bounce-in {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 22px, 0);
+  }
+  55% {
+    opacity: 1;
+    transform: translate3d(0, -6px, 0);
+  }
+  78% {
+    opacity: 1;
+    transform: translate3d(0, 2px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.animate-download-bounce-in {
+  animation: download-bounce-in 700ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+

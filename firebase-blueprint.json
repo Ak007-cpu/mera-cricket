@@ -1,0 +1,278 @@
+{
+  "entities": {
+    "PlayerProfile": {
+      "title": "PlayerProfile",
+      "description": "Custom player photo, name, role, and team metadata managed from Admin Content Manager",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "originalName": { "type": "string", "minLength": 0, "maxLength": 120 },
+        "role": { "type": "string", "enum": ["Batter", "Bowler", "All-rounder", "Wicketkeeper"] },
+        "teamCode": { "type": "string", "minLength": 0, "maxLength": 24 },
+        "imageUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128 }
+      },
+      "required": ["id", "name", "role", "updatedAt", "updatedBy"]
+    },
+    "TeamProfile": {
+      "title": "TeamProfile",
+      "description": "Custom team name and flag/logo URL managed from Admin Content Manager",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "code": { "type": "string", "minLength": 1, "maxLength": 24 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "logoUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128 }
+      },
+      "required": ["id", "code", "name", "updatedAt", "updatedBy"]
+    },
+    "NewsItem": {
+      "title": "NewsItem",
+      "description": "Cricket news article with title, full body content, featured image URL, and optional breaking ticker and pin-to-top flags",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "description": { "type": "string", "minLength": 1, "maxLength": 1200 },
+        "body": { "type": "string", "minLength": 0, "maxLength": 50000 },
+        "imageUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "featuredImageUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "date": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "category": { "type": "string", "enum": ["Domestic", "International", "ICC", "Match Update", "Breaking", "Transfer", "General"] },
+        "pinned": { "type": "boolean" },
+        "isBreaking": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "authorUid": { "type": "string", "minLength": 1, "maxLength": 128 }
+      },
+      "required": ["id", "title", "description", "date", "category", "pinned", "isBreaking", "createdAt", "updatedAt", "authorUid"]
+    },
+    "BlogPost": {
+      "title": "BlogPost",
+      "description": "Long-form cricket blog article with cover image, rich formatted body, and publish/draft status",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "slug": { "type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 220 },
+        "excerpt": { "type": "string", "minLength": 0, "maxLength": 500 },
+        "coverImageUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "content": { "type": "string", "minLength": 1, "maxLength": 50000 },
+        "status": { "type": "string", "enum": ["published", "draft"] },
+        "publishedAt": { "type": "string", "minLength": 0, "maxLength": 40 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "authorUid": { "type": "string", "minLength": 1, "maxLength": 128 }
+      },
+      "required": ["id", "slug", "title", "content", "status", "createdAt", "updatedAt", "authorUid"]
+    },
+    "SiteConfig": {
+      "title": "SiteConfig",
+      "description": "Global site monetization, sponsor, and live team/player display settings",
+      "type": "object",
+      "properties": {
+        "adsEnabled": { "type": "boolean" },
+        "adsensePublisherId": { "type": "string", "minLength": 0, "maxLength": 120 },
+        "adsenseAutoAds": { "type": "boolean" },
+        "adsenseTestMode": { "type": "boolean" },
+        "adsenseHidePlaceholders": { "type": "boolean" },
+        "adsTxtCustomLines": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "topSlotId": { "type": "string", "minLength": 0, "maxLength": 120 },
+        "topSlotFormat": { "type": "string", "enum": ["auto", "horizontal", "rectangle", "vertical"] },
+        "topSlotSource": { "type": "string", "enum": ["auto", "adsense", "custom"] },
+        "topSlotImageUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "topSlotLinkUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "topSlotTitle": { "type": "string", "minLength": 0, "maxLength": 120 },
+        "inContentSlotId": { "type": "string", "minLength": 0, "maxLength": 120 },
+        "inContentSlotFormat": { "type": "string", "enum": ["auto", "horizontal", "rectangle", "vertical"] },
+        "inContentSlotSource": { "type": "string", "enum": ["auto", "adsense", "custom"] },
+        "inContentSlotImageUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "inContentSlotLinkUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "inContentSlotTitle": { "type": "string", "minLength": 0, "maxLength": 120 },
+        "footerSlotId": { "type": "string", "minLength": 0, "maxLength": 120 },
+        "footerSlotFormat": { "type": "string", "enum": ["auto", "horizontal", "rectangle", "vertical"] },
+        "footerSlotSource": { "type": "string", "enum": ["auto", "adsense", "custom"] },
+        "footerSlotImageUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "footerSlotLinkUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "footerSlotTitle": { "type": "string", "minLength": 0, "maxLength": 120 },
+        "mobileSlotEnabled": { "type": "boolean" },
+        "mobileSlotId": { "type": "string", "minLength": 0, "maxLength": 120 },
+        "mobileSlotFormat": { "type": "string", "enum": ["auto", "horizontal", "rectangle", "vertical"] },
+        "mobileSlotSource": { "type": "string", "enum": ["auto", "adsense", "custom"] },
+        "mobileSlotImageUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "mobileSlotLinkUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "mobileSlotTitle": { "type": "string", "minLength": 0, "maxLength": 120 },
+        "topSlotEnabled": { "type": "boolean" },
+        "inContentSlotEnabled": { "type": "boolean" },
+        "footerSlotEnabled": { "type": "boolean" },
+        "sponsorEnabled": { "type": "boolean" },
+        "sponsorName": { "type": "string", "minLength": 0, "maxLength": 160 },
+        "sponsorTagline": { "type": "string", "minLength": 0, "maxLength": 240 },
+        "sponsorLogoUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "sponsorImageUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "sponsorLinkUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "siteName": { "type": "string", "minLength": 0, "maxLength": 120 },
+        "contactEmail": { "type": "string", "minLength": 0, "maxLength": 160 },
+        "animationsEnabled": { "type": "boolean" },
+        "broadcastNewsMarqueeEnabled": { "type": "boolean" },
+        "winProbabilityEnabled": { "type": "boolean" },
+        "winProbOverrideEnabled": { "type": "boolean" },
+        "winProbBattingPct": { "type": "number" },
+        "obsTargetPanel": { "type": "boolean" },
+        "obsWinProbBar": { "type": "boolean" },
+        "obsRunRateGraph": { "type": "boolean" },
+        "announcementEnabled": { "type": "boolean" },
+        "announcementText": { "type": "string", "minLength": 0, "maxLength": 240 },
+        "announcementLinkUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "mobileAdsEnabled": { "type": "boolean" },
+        "mobileSponsorEnabled": { "type": "boolean" },
+        "mobileNewsTickerEnabled": { "type": "boolean" },
+        "mobilePollEnabled": { "type": "boolean" },
+        "mobileScorecardEnabled": { "type": "boolean" },
+        "mobileNewsPageEnabled": { "type": "boolean" },
+        "mobileBlogPageEnabled": { "type": "boolean" },
+        "mobileBrandBadge": { "type": "string", "minLength": 0, "maxLength": 60 },
+        "appDownloadEnabled": { "type": "boolean" },
+        "apkUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "appVersion": { "type": "string", "minLength": 0, "maxLength": 40 },
+        "gameDownloadEnabled": { "type": "boolean" },
+        "gameApkUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "gameSizeLabel": { "type": "string", "minLength": 0, "maxLength": 40 },
+        "holdActive": { "type": "boolean" },
+        "holdReason": { "type": "string", "enum": ["Break", "Rain", "Drinks", "Innings Break", "Match Starting Soon", "Technical Issue"] },
+        "holdObsEnabled": { "type": "boolean" },
+        "holdVideoEnabled": { "type": "boolean" },
+        "holdVideoLoop": { "type": "boolean" },
+        "holdVideoUrls": { "type": "array", "description": "Bounded list of up to 20 YouTube video URLs for Hold Screen playlist" },
+        "holdSponsorEnabled": { "type": "boolean" },
+        "holdSponsorMode": { "type": "string", "enum": ["with_content", "replace_video"] },
+        "holdSponsorImageUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "holdSponsorLinkUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "nextMatchName": { "type": "string", "minLength": 0, "maxLength": 100 },
+        "nextMatchTime": { "type": "string", "minLength": 0, "maxLength": 80 },
+        "matchTimerActive": { "type": "boolean" },
+        "matchTimerStartedAt": { "type": "number" },
+        "matchTimerAccumulatedMs": { "type": "number" },
+        "tvEnabled": { "type": "boolean" },
+        "tvObsEnabled": { "type": "boolean" },
+        "tvFullScreenTakeover": { "type": "boolean" },
+        "tvLoop": { "type": "boolean" },
+        "tvBatBallBetweenAds": { "type": "boolean" },
+        "tvBatBallGapSec": { "type": "number" },
+        "tvPlayNowItemId": { "type": "string", "minLength": 0, "maxLength": 128 },
+        "tvPlayNowNonce": { "type": "number" },
+        "tvPlaybackStopped": { "type": "boolean" },
+        "tvSponsorName": { "type": "string", "minLength": 0, "maxLength": 120 },
+        "tvSponsorLink": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "tvPlaylist": { "type": "array", "description": "Bounded list of up to 20 TV Screen ad/video playlist items" },
+        "soundEnabled": { "type": "boolean" },
+        "soundObsEnabled": { "type": "boolean" },
+        "soundEffectsVolume": { "type": "number" },
+        "soundCrowdVolume": { "type": "number" },
+        "soundVoiceRate": { "type": "number" },
+        "soundVoiceVolume": { "type": "number" },
+        "soundFourUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "soundSixUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "soundWicketUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "soundCrowdUrl": { "type": "string", "minLength": 0, "maxLength": 2000 },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "updatedBy": { "type": "string", "minLength": 1, "maxLength": 128 }
+      },
+      "required": ["adsEnabled", "sponsorEnabled", "updatedAt", "updatedBy"]
+    },
+    "MediaLibraryItem": {
+      "title": "MediaLibraryItem",
+      "description": "Reusable video asset (Firebase Storage upload or linked video/YouTube URL) managed from StudioAdmin Media Library for Standby Broadcast playback",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "mediaType": { "type": "string", "enum": ["video", "youtube"] },
+        "url": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "durationSec": { "type": "number" },
+        "source": { "type": "string", "enum": ["upload", "url", "recording"] },
+        "category": { "type": "string", "minLength": 0, "maxLength": 60 },
+        "description": { "type": "string", "minLength": 0, "maxLength": 300 },
+        "storedInFirebase": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "authorUid": { "type": "string", "minLength": 1, "maxLength": 128 }
+      },
+      "required": ["id", "title", "mediaType", "url", "durationSec", "source", "storedInFirebase", "createdAt", "updatedAt", "authorUid"]
+    },
+    "MatchPoll": {
+      "title": "MatchPoll",
+      "description": "Live fan poll tracking viewer votes for who will win the current match",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "matchId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "team1Code": { "type": "string", "minLength": 1, "maxLength": 24 },
+        "team1Name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "team2Code": { "type": "string", "minLength": 1, "maxLength": 24 },
+        "team2Name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "team1Votes": { "type": "number" },
+        "team2Votes": { "type": "number" },
+        "drawVotes": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "matchId", "team1Code", "team1Name", "team2Code", "team2Name", "team1Votes", "team2Votes", "drawVotes", "updatedAt"]
+    },
+    "VideoSource": {
+      "title": "VideoSource",
+      "description": "Saved YouTube, local video, or local/embed match stream URL configuration managed from Studio Admin Video Sources",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "sourceType": { "type": "string", "enum": ["youtube", "local_video", "embed"] },
+        "url": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "category": { "type": "string", "minLength": 0, "maxLength": 60 },
+        "notes": { "type": "string", "minLength": 0, "maxLength": 300 },
+        "durationSec": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "authorUid": { "type": "string", "minLength": 1, "maxLength": 128 }
+      },
+      "required": ["id", "name", "sourceType", "url", "durationSec", "createdAt", "updatedAt", "authorUid"]
+    }
+  },
+  "firestore": {
+    "/players/{playerId}": {
+      "schema": { "$ref": "#/entities/PlayerProfile" },
+      "description": "Publicly readable, admin-writable player profiles and photos"
+    },
+    "/teams/{teamId}": {
+      "schema": { "$ref": "#/entities/TeamProfile" },
+      "description": "Publicly readable, admin-writable team names and flags/logos"
+    },
+    "/news/{newsId}": {
+      "schema": { "$ref": "#/entities/NewsItem" },
+      "description": "Publicly readable, admin-writable news updates and breaking ticker items"
+    },
+    "/blogs/{blogId}": {
+      "schema": { "$ref": "#/entities/BlogPost" },
+      "description": "Published blogs publicly readable; drafts and writes restricted to admin"
+    },
+    "/site_config/{configId}": {
+      "schema": { "$ref": "#/entities/SiteConfig" },
+      "description": "Publicly readable, admin-writable sponsor and monetization config"
+    },
+    "/media_library/{mediaId}": {
+      "schema": { "$ref": "#/entities/MediaLibraryItem" },
+      "description": "Admin-managed library of uploaded and linked video clips stored in Firebase for Standby Broadcast playback"
+    },
+    "/match_polls/{pollId}": {
+      "schema": { "$ref": "#/entities/MatchPoll" },
+      "description": "Live fan poll voting totals per match with atomic +1 vote rules"
+    },
+    "/video_sources/{sourceId}": {
+      "schema": { "$ref": "#/entities/VideoSource" },
+      "description": "Admin-managed saved match stream and video source URL configurations for instant Broadcast feed switching"
+    }
+  }
+}

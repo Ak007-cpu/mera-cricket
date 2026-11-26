@@ -1,0 +1,481 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Default-Deny Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Hardened Global Helpers
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'imran007khi@gmail.com';
+    }
+
+    function isOptionalString(data, key, maxLen) {
+      return !(key in data) || (data[key] is string && data[key].size() <= maxLen);
+    }
+
+    // Entity Validators (Sync with firebase-blueprint.json)
+    function isValidPlayerProfile(data) {
+      return data.keys().hasAll(['id', 'name', 'role', 'updatedAt', 'updatedBy'])
+        && data.keys().hasOnly(['id', 'name', 'originalName', 'role', 'teamCode', 'imageUrl', 'updatedAt', 'updatedBy'])
+        && isValidId(data.id)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+        && isOptionalString(data, 'originalName', 120)
+        && data.role is string && data.role in ['Batter', 'Bowler', 'All-rounder', 'Wicketkeeper']
+        && isOptionalString(data, 'teamCode', 24)
+        && isOptionalString(data, 'imageUrl', 2000)
+        && data.updatedAt == request.time
+        && data.updatedBy is string && data.updatedBy == request.auth.uid;
+    }
+
+    function isValidTeamProfile(data) {
+      return data.keys().hasAll(['id', 'code', 'name', 'updatedAt', 'updatedBy'])
+        && data.keys().hasOnly(['id', 'code', 'name', 'logoUrl', 'updatedAt', 'updatedBy'])
+        && isValidId(data.id)
+        && data.code is string && data.code.size() >= 1 && data.code.size() <= 24
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+        && isOptionalString(data, 'logoUrl', 2000)
+        && data.updatedAt == request.time
+        && data.updatedBy is string && data.updatedBy == request.auth.uid;
+    }
+
+    function isValidNewsItem(data) {
+      return data.keys().hasAll(['id', 'title', 'description', 'date', 'category', 'pinned', 'isBreaking', 'createdAt', 'updatedAt', 'authorUid'])
+        && data.keys().hasOnly(['id', 'title', 'description', 'body', 'imageUrl', 'featuredImageUrl', 'date', 'category', 'pinned', 'isBreaking', 'createdAt', 'updatedAt', 'authorUid'])
+        && isValidId(data.id)
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && data.description is string && data.description.size() >= 1 && data.description.size() <= 1200
+        && isOptionalString(data, 'body', 50000)
+        && isOptionalString(data, 'imageUrl', 2000)
+        && isOptionalString(data, 'featuredImageUrl', 2000)
+        && data.date is string && data.date.size() >= 1 && data.date.size() <= 40
+        && data.category is string && data.category in ['Domestic', 'International', 'ICC', 'Match Update', 'Breaking', 'Transfer', 'General']
+        && data.pinned is bool
+        && data.isBreaking is bool
+        && data.createdAt is timestamp
+        && data.updatedAt == request.time
+        && data.authorUid is string && data.authorUid == request.auth.uid;
+    }
+
+    function isValidBlogPost(data) {
+      return data.keys().hasAll(['id', 'slug', 'title', 'content', 'status', 'createdAt', 'updatedAt', 'authorUid'])
+        && data.keys().hasOnly(['id', 'slug', 'title', 'excerpt', 'coverImageUrl', 'content', 'status', 'publishedAt', 'createdAt', 'updatedAt', 'authorUid'])
+        && isValidId(data.id)
+        && data.slug is string && data.slug.size() >= 1 && data.slug.size() <= 160 && data.slug.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 220
+        && isOptionalString(data, 'excerpt', 500)
+        && isOptionalString(data, 'coverImageUrl', 2000)
+        && data.content is string && data.content.size() >= 1 && data.content.size() <= 50000
+        && data.status is string && data.status in ['published', 'draft']
+        && isOptionalString(data, 'publishedAt', 40)
+        && data.createdAt is timestamp
+        && data.updatedAt == request.time
+        && data.authorUid is string && data.authorUid == request.auth.uid;
+    }
+
+    function isValidTvPlaylistItem(item) {
+      return item is map
+        && item.keys().hasAll(['id', 'mediaType', 'url', 'title', 'durationSec'])
+        && item.keys().hasOnly(['id', 'mediaType', 'url', 'title', 'durationSec'])
+        && isValidId(item.id)
+        && item.mediaType is string && item.mediaType in ['image', 'video', 'youtube', 'news_feed', 'embed']
+        && item.url is string && item.url.size() >= 1 && item.url.size() <= 2000
+        && item.title is string && item.title.size() <= 120
+        && item.durationSec is number && item.durationSec >= 3 && item.durationSec <= 600;
+    }
+
+    function isValidAdFormat(data, key) {
+      return !(key in data) || (data[key] is string && data[key] in ['auto', 'horizontal', 'rectangle', 'vertical']);
+    }
+
+    function isValidAdSource(data, key) {
+      return !(key in data) || (data[key] is string && data[key] in ['auto', 'adsense', 'custom']);
+    }
+
+    function isValidSiteAdSlot(data, prefix) {
+      return isOptionalString(data, prefix + 'SlotId', 120)
+        && isValidAdFormat(data, prefix + 'SlotFormat')
+        && isValidAdSource(data, prefix + 'SlotSource')
+        && isOptionalString(data, prefix + 'SlotImageUrl', 2000)
+        && isOptionalString(data, prefix + 'SlotLinkUrl', 2000)
+        && isOptionalString(data, prefix + 'SlotTitle', 120)
+        && (!((prefix + 'SlotEnabled') in data) || data[prefix + 'SlotEnabled'] is bool);
+    }
+
+    function isValidSiteAdsAndSponsor(data) {
+      return data.adsEnabled is bool
+        && data.sponsorEnabled is bool
+        && isOptionalString(data, 'adsensePublisherId', 120)
+        && (!('adsenseAutoAds' in data) || data.adsenseAutoAds is bool)
+        && (!('adsenseTestMode' in data) || data.adsenseTestMode is bool)
+        && (!('adsenseHidePlaceholders' in data) || data.adsenseHidePlaceholders is bool)
+        && isOptionalString(data, 'adsTxtCustomLines', 2000)
+        && isValidSiteAdSlot(data, 'top')
+        && isValidSiteAdSlot(data, 'inContent')
+        && isValidSiteAdSlot(data, 'footer')
+        && isValidSiteAdSlot(data, 'mobile')
+        && isOptionalString(data, 'sponsorName', 160)
+        && isOptionalString(data, 'sponsorTagline', 240)
+        && isOptionalString(data, 'sponsorLogoUrl', 2000)
+        && isOptionalString(data, 'sponsorImageUrl', 2000)
+        && isOptionalString(data, 'sponsorLinkUrl', 2000)
+        && isOptionalString(data, 'siteName', 120)
+        && isOptionalString(data, 'contactEmail', 160);
+    }
+
+    function isValidSiteBroadcastAndMobile(data) {
+      return (!('animationsEnabled' in data) || data.animationsEnabled is bool)
+        && (!('broadcastNewsMarqueeEnabled' in data) || data.broadcastNewsMarqueeEnabled is bool)
+        && (!('winProbabilityEnabled' in data) || data.winProbabilityEnabled is bool)
+        && (!('winProbOverrideEnabled' in data) || data.winProbOverrideEnabled is bool)
+        && (!('winProbBattingPct' in data) || (data.winProbBattingPct is number && data.winProbBattingPct >= 0 && data.winProbBattingPct <= 100))
+        && (!('obsTargetPanel' in data) || data.obsTargetPanel is bool)
+        && (!('obsWinProbBar' in data) || data.obsWinProbBar is bool)
+        && (!('obsRunRateGraph' in data) || data.obsRunRateGraph is bool)
+        && (!('announcementEnabled' in data) || data.announcementEnabled is bool)
+        && isOptionalString(data, 'announcementText', 240)
+        && isOptionalString(data, 'announcementLinkUrl', 2000)
+        && (!('mobileAdsEnabled' in data) || data.mobileAdsEnabled is bool)
+        && (!('mobileSponsorEnabled' in data) || data.mobileSponsorEnabled is bool)
+        && (!('mobileNewsTickerEnabled' in data) || data.mobileNewsTickerEnabled is bool)
+        && (!('mobilePollEnabled' in data) || data.mobilePollEnabled is bool)
+        && (!('mobileScorecardEnabled' in data) || data.mobileScorecardEnabled is bool)
+        && (!('mobileNewsPageEnabled' in data) || data.mobileNewsPageEnabled is bool)
+        && (!('mobileBlogPageEnabled' in data) || data.mobileBlogPageEnabled is bool)
+        && isOptionalString(data, 'mobileBrandBadge', 60)
+        && (!('appDownloadEnabled' in data) || data.appDownloadEnabled is bool)
+        && isOptionalString(data, 'apkUrl', 2000)
+        && isOptionalString(data, 'appVersion', 40)
+        && (!('gameDownloadEnabled' in data) || data.gameDownloadEnabled is bool)
+        && isOptionalString(data, 'gameApkUrl', 2000)
+        && isOptionalString(data, 'gameSizeLabel', 40);
+    }
+
+    function isValidSiteHoldAndTv(data) {
+      return (!('holdActive' in data) || data.holdActive is bool)
+        && (!('holdReason' in data) || (data.holdReason is string && data.holdReason in ['Break', 'Rain', 'Drinks', 'Innings Break', 'Match Starting Soon', 'Technical Issue']))
+        && (!('holdObsEnabled' in data) || data.holdObsEnabled is bool)
+        && (!('holdVideoEnabled' in data) || data.holdVideoEnabled is bool)
+        && (!('holdVideoLoop' in data) || data.holdVideoLoop is bool)
+        && (!('holdVideoUrls' in data) || (data.holdVideoUrls is list && data.holdVideoUrls.size() <= 20 && (data.holdVideoUrls.size() == 0 || (data.holdVideoUrls[0] is string && data.holdVideoUrls[0].size() <= 2000))))
+        && (!('holdSponsorEnabled' in data) || data.holdSponsorEnabled is bool)
+        && (!('holdSponsorMode' in data) || (data.holdSponsorMode is string && data.holdSponsorMode in ['with_content', 'replace_video']))
+        && isOptionalString(data, 'holdSponsorImageUrl', 2000)
+        && isOptionalString(data, 'holdSponsorLinkUrl', 2000)
+        && isOptionalString(data, 'nextMatchName', 100)
+        && isOptionalString(data, 'nextMatchTime', 80)
+        && (!('matchTimerActive' in data) || data.matchTimerActive is bool)
+        && (!('matchTimerStartedAt' in data) || (data.matchTimerStartedAt is number && data.matchTimerStartedAt >= 0))
+        && (!('matchTimerAccumulatedMs' in data) || (data.matchTimerAccumulatedMs is number && data.matchTimerAccumulatedMs >= 0))
+        && (!('tvEnabled' in data) || data.tvEnabled is bool)
+        && (!('tvObsEnabled' in data) || data.tvObsEnabled is bool)
+        && (!('tvFullScreenTakeover' in data) || data.tvFullScreenTakeover is bool)
+        && (!('tvLoop' in data) || data.tvLoop is bool)
+        && (!('tvBatBallBetweenAds' in data) || data.tvBatBallBetweenAds is bool)
+        && (!('tvBatBallGapSec' in data) || (data.tvBatBallGapSec is number && data.tvBatBallGapSec >= 2 && data.tvBatBallGapSec <= 60))
+        && isOptionalString(data, 'tvPlayNowItemId', 128)
+        && (!('tvPlayNowNonce' in data) || (data.tvPlayNowNonce is number && data.tvPlayNowNonce >= 0))
+        && (!('tvPlaybackStopped' in data) || data.tvPlaybackStopped is bool)
+        && isOptionalString(data, 'tvSponsorName', 120)
+        && isOptionalString(data, 'tvSponsorLink', 2000)
+        && (!('tvPlaylist' in data) || (data.tvPlaylist is list && data.tvPlaylist.size() <= 20 && (data.tvPlaylist.size() == 0 || isValidTvPlaylistItem(data.tvPlaylist[0]))));
+    }
+
+    function isValidSiteSound(data) {
+      return (!('soundEnabled' in data) || data.soundEnabled is bool)
+        && (!('soundObsEnabled' in data) || data.soundObsEnabled is bool)
+        && (!('soundEffectsVolume' in data) || (data.soundEffectsVolume is number && data.soundEffectsVolume >= 0 && data.soundEffectsVolume <= 100))
+        && (!('soundCrowdVolume' in data) || (data.soundCrowdVolume is number && data.soundCrowdVolume >= 0 && data.soundCrowdVolume <= 100))
+        && (!('soundVoiceRate' in data) || (data.soundVoiceRate is number && data.soundVoiceRate >= 0.5 && data.soundVoiceRate <= 2.0))
+        && (!('soundVoiceVolume' in data) || (data.soundVoiceVolume is number && data.soundVoiceVolume >= 0 && data.soundVoiceVolume <= 100))
+        && isOptionalString(data, 'soundFourUrl', 2000)
+        && isOptionalString(data, 'soundSixUrl', 2000)
+        && isOptionalString(data, 'soundWicketUrl', 2000)
+        && isOptionalString(data, 'soundCrowdUrl', 2000);
+    }
+
+    function isValidSiteConfig(data) {
+      return data.keys().hasAll(['adsEnabled', 'sponsorEnabled', 'updatedAt', 'updatedBy'])
+        && data.keys().hasOnly([
+          'adsEnabled', 'adsensePublisherId',
+          'adsenseAutoAds', 'adsenseTestMode', 'adsenseHidePlaceholders', 'adsTxtCustomLines',
+          'topSlotId', 'topSlotFormat', 'topSlotSource', 'topSlotImageUrl', 'topSlotLinkUrl', 'topSlotTitle', 'topSlotEnabled',
+          'inContentSlotId', 'inContentSlotFormat', 'inContentSlotSource', 'inContentSlotImageUrl', 'inContentSlotLinkUrl', 'inContentSlotTitle', 'inContentSlotEnabled',
+          'footerSlotId', 'footerSlotFormat', 'footerSlotSource', 'footerSlotImageUrl', 'footerSlotLinkUrl', 'footerSlotTitle', 'footerSlotEnabled',
+          'mobileSlotId', 'mobileSlotFormat', 'mobileSlotSource', 'mobileSlotImageUrl', 'mobileSlotLinkUrl', 'mobileSlotTitle', 'mobileSlotEnabled',
+          'sponsorEnabled', 'sponsorName', 'sponsorTagline', 'sponsorLogoUrl', 'sponsorImageUrl', 'sponsorLinkUrl',
+          'siteName', 'contactEmail',
+          'animationsEnabled', 'broadcastNewsMarqueeEnabled', 'winProbabilityEnabled', 'winProbOverrideEnabled', 'winProbBattingPct',
+          'obsTargetPanel', 'obsWinProbBar', 'obsRunRateGraph',
+          'announcementEnabled', 'announcementText', 'announcementLinkUrl',
+          'mobileAdsEnabled', 'mobileSponsorEnabled', 'mobileNewsTickerEnabled', 'mobilePollEnabled',
+          'mobileScorecardEnabled', 'mobileNewsPageEnabled', 'mobileBlogPageEnabled', 'mobileBrandBadge',
+          'appDownloadEnabled', 'apkUrl', 'appVersion',
+          'gameDownloadEnabled', 'gameApkUrl', 'gameSizeLabel',
+          'holdActive', 'holdReason', 'holdObsEnabled', 'holdVideoEnabled', 'holdVideoLoop',
+          'holdVideoUrls', 'holdSponsorEnabled', 'holdSponsorMode', 'holdSponsorImageUrl',
+          'holdSponsorLinkUrl', 'nextMatchName', 'nextMatchTime',
+          'matchTimerActive', 'matchTimerStartedAt', 'matchTimerAccumulatedMs',
+          'tvEnabled', 'tvObsEnabled', 'tvFullScreenTakeover', 'tvLoop', 'tvBatBallBetweenAds', 'tvBatBallGapSec',
+          'tvPlayNowItemId', 'tvPlayNowNonce', 'tvPlaybackStopped', 'tvSponsorName', 'tvSponsorLink', 'tvPlaylist',
+          'soundEnabled', 'soundObsEnabled', 'soundEffectsVolume', 'soundCrowdVolume',
+          'soundVoiceRate', 'soundVoiceVolume',
+          'soundFourUrl', 'soundSixUrl', 'soundWicketUrl', 'soundCrowdUrl',
+          'updatedAt', 'updatedBy'
+        ])
+        && isValidSiteAdsAndSponsor(data)
+        && isValidSiteBroadcastAndMobile(data)
+        && isValidSiteHoldAndTv(data)
+        && isValidSiteSound(data)
+        && data.updatedAt == request.time
+        && data.updatedBy is string && data.updatedBy == request.auth.uid;
+    }
+
+    function isValidMediaLibraryItem(data) {
+      return data.keys().hasAll(['id', 'title', 'mediaType', 'url', 'durationSec', 'source', 'storedInFirebase', 'createdAt', 'updatedAt', 'authorUid'])
+        && data.keys().hasOnly(['id', 'title', 'mediaType', 'url', 'durationSec', 'source', 'category', 'description', 'storedInFirebase', 'createdAt', 'updatedAt', 'authorUid'])
+        && isValidId(data.id)
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 120
+        && data.mediaType is string && data.mediaType in ['video', 'youtube']
+        && data.url is string && data.url.size() >= 1 && data.url.size() <= 2000
+        && data.durationSec is number && data.durationSec >= 3 && data.durationSec <= 600
+        && data.source is string && data.source in ['upload', 'url', 'recording']
+        && isOptionalString(data, 'category', 60)
+        && isOptionalString(data, 'description', 300)
+        && data.storedInFirebase is bool
+        && data.createdAt is timestamp
+        && data.updatedAt == request.time
+        && data.authorUid is string && data.authorUid == request.auth.uid;
+    }
+
+    function isValidMatchPoll(data) {
+      return data.keys().hasAll(['id', 'matchId', 'team1Code', 'team1Name', 'team2Code', 'team2Name', 'team1Votes', 'team2Votes', 'drawVotes', 'updatedAt'])
+        && data.keys().hasOnly(['id', 'matchId', 'team1Code', 'team1Name', 'team2Code', 'team2Name', 'team1Votes', 'team2Votes', 'drawVotes', 'updatedAt'])
+        && isValidId(data.id)
+        && data.matchId is string && data.matchId.size() >= 1 && data.matchId.size() <= 128
+        && data.team1Code is string && data.team1Code.size() >= 1 && data.team1Code.size() <= 24
+        && data.team1Name is string && data.team1Name.size() >= 1 && data.team1Name.size() <= 120
+        && data.team2Code is string && data.team2Code.size() >= 1 && data.team2Code.size() <= 24
+        && data.team2Name is string && data.team2Name.size() >= 1 && data.team2Name.size() <= 120
+        && data.team1Votes is int && data.team1Votes >= 0 && data.team1Votes <= 10000000
+        && data.team2Votes is int && data.team2Votes >= 0 && data.team2Votes <= 10000000
+        && data.drawVotes is int && data.drawVotes >= 0 && data.drawVotes <= 10000000
+        && data.updatedAt == request.time;
+    }
+
+    function isValidVideoSource(data) {
+      return data.keys().hasAll(['id', 'name', 'sourceType', 'url', 'durationSec', 'createdAt', 'updatedAt', 'authorUid'])
+        && data.keys().hasOnly(['id', 'name', 'sourceType', 'url', 'category', 'notes', 'durationSec', 'createdAt', 'updatedAt', 'authorUid'])
+        && isValidId(data.id)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+        && data.sourceType is string && data.sourceType in ['youtube', 'local_video', 'embed']
+        && data.url is string && data.url.size() >= 1 && data.url.size() <= 2000
+        && isOptionalString(data, 'category', 60)
+        && isOptionalString(data, 'notes', 300)
+        && data.durationSec is number && data.durationSec >= 3 && data.durationSec <= 600
+        && data.createdAt is timestamp
+        && data.updatedAt == request.time
+        && data.authorUid is string && data.authorUid == request.auth.uid;
+    }
+
+    // Admin Allowlist (Read-only own marker)
+    match /admins/{uid} {
+      allow get: if isSignedIn() && request.auth.uid == uid;
+      allow list, create, update, delete: if false;
+    }
+
+    // Players Collection: Public read (non-PII scoreboard directory), Admin-only write
+    match /players/{playerId} {
+      allow get: if isValidId(playerId);
+      allow list: if true;
+      allow create: if isValidId(playerId) && isAdmin() && isValidPlayerProfile(incoming()) && incoming().id == playerId;
+      allow update: if isValidId(playerId) && isAdmin() && isValidPlayerProfile(incoming())
+        && incoming().id == existing().id
+        && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'originalName', 'role', 'teamCode', 'imageUrl', 'updatedAt', 'updatedBy']);
+      allow delete: if isValidId(playerId) && isAdmin();
+    }
+
+    // Teams Collection: Public read (non-PII scoreboard directory), Admin-only write
+    match /teams/{teamId} {
+      allow get: if isValidId(teamId);
+      allow list: if true;
+      allow create: if isValidId(teamId) && isAdmin() && isValidTeamProfile(incoming()) && incoming().id == teamId;
+      allow update: if isValidId(teamId) && isAdmin() && isValidTeamProfile(incoming())
+        && incoming().id == existing().id
+        && incoming().diff(existing()).affectedKeys().hasOnly(['code', 'name', 'logoUrl', 'updatedAt', 'updatedBy']);
+      allow delete: if isValidId(teamId) && isAdmin();
+    }
+
+    // News Updates & Breaking Ticker: Public read, Admin-only write
+    match /news/{newsId} {
+      allow get: if isValidId(newsId);
+      allow list: if true;
+      allow create: if isValidId(newsId) && isAdmin() && isValidNewsItem(incoming())
+        && incoming().id == newsId
+        && incoming().createdAt == request.time;
+      allow update: if isValidId(newsId) && isAdmin() && isValidNewsItem(incoming())
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && incoming().authorUid == existing().authorUid
+        && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'body', 'imageUrl', 'featuredImageUrl', 'date', 'category', 'pinned', 'isBreaking', 'updatedAt', 'authorUid']);
+      allow delete: if isValidId(newsId) && isAdmin();
+    }
+
+    // Blog Articles: Public can read ONLY published posts; Admin can read/write/delete all
+    match /blogs/{blogId} {
+      allow get: if isValidId(blogId) && (existing().status == 'published' || isAdmin());
+      allow list: if resource.data.status == 'published' || isAdmin();
+      allow create: if isValidId(blogId) && isAdmin() && isValidBlogPost(incoming())
+        && incoming().id == blogId
+        && incoming().createdAt == request.time;
+      allow update: if isValidId(blogId) && isAdmin() && isValidBlogPost(incoming())
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && incoming().authorUid == existing().authorUid
+        && incoming().diff(existing()).affectedKeys().hasOnly(['slug', 'title', 'excerpt', 'coverImageUrl', 'content', 'status', 'publishedAt', 'updatedAt', 'authorUid']);
+      allow delete: if isValidId(blogId) && isAdmin();
+    }
+
+    // Site Config (Monetization & Sponsor): Public doc read, Admin-only write
+    match /site_config/{configId} {
+      allow get: if isValidId(configId);
+      allow list: if false;
+      allow create: if isValidId(configId) && isAdmin() && isValidSiteConfig(incoming());
+      allow update: if isValidId(configId) && isAdmin() && isValidSiteConfig(incoming())
+        && incoming().diff(existing()).addedKeys().hasOnly([
+          'adsEnabled', 'adsensePublisherId',
+          'adsenseAutoAds', 'adsenseTestMode', 'adsenseHidePlaceholders', 'adsTxtCustomLines',
+          'topSlotId', 'topSlotFormat', 'topSlotSource', 'topSlotImageUrl', 'topSlotLinkUrl', 'topSlotTitle', 'topSlotEnabled',
+          'inContentSlotId', 'inContentSlotFormat', 'inContentSlotSource', 'inContentSlotImageUrl', 'inContentSlotLinkUrl', 'inContentSlotTitle', 'inContentSlotEnabled',
+          'footerSlotId', 'footerSlotFormat', 'footerSlotSource', 'footerSlotImageUrl', 'footerSlotLinkUrl', 'footerSlotTitle', 'footerSlotEnabled',
+          'mobileSlotId', 'mobileSlotFormat', 'mobileSlotSource', 'mobileSlotImageUrl', 'mobileSlotLinkUrl', 'mobileSlotTitle', 'mobileSlotEnabled',
+          'sponsorEnabled', 'sponsorName', 'sponsorTagline', 'sponsorLogoUrl', 'sponsorImageUrl', 'sponsorLinkUrl',
+          'siteName', 'contactEmail',
+          'animationsEnabled', 'broadcastNewsMarqueeEnabled', 'winProbabilityEnabled', 'winProbOverrideEnabled', 'winProbBattingPct',
+          'obsTargetPanel', 'obsWinProbBar', 'obsRunRateGraph',
+          'announcementEnabled', 'announcementText', 'announcementLinkUrl',
+          'mobileAdsEnabled', 'mobileSponsorEnabled', 'mobileNewsTickerEnabled', 'mobilePollEnabled',
+          'mobileScorecardEnabled', 'mobileNewsPageEnabled', 'mobileBlogPageEnabled', 'mobileBrandBadge',
+          'appDownloadEnabled', 'apkUrl', 'appVersion',
+          'gameDownloadEnabled', 'gameApkUrl', 'gameSizeLabel',
+          'holdActive', 'holdReason', 'holdObsEnabled', 'holdVideoEnabled', 'holdVideoLoop',
+          'holdVideoUrls', 'holdSponsorEnabled', 'holdSponsorMode', 'holdSponsorImageUrl',
+          'holdSponsorLinkUrl', 'nextMatchName', 'nextMatchTime',
+          'matchTimerActive', 'matchTimerStartedAt', 'matchTimerAccumulatedMs',
+          'tvEnabled', 'tvObsEnabled', 'tvFullScreenTakeover', 'tvLoop', 'tvBatBallBetweenAds', 'tvBatBallGapSec',
+          'tvPlayNowItemId', 'tvPlayNowNonce', 'tvPlaybackStopped', 'tvSponsorName', 'tvSponsorLink', 'tvPlaylist',
+          'soundEnabled', 'soundObsEnabled', 'soundEffectsVolume', 'soundCrowdVolume',
+          'soundVoiceRate', 'soundVoiceVolume',
+          'soundFourUrl', 'soundSixUrl', 'soundWicketUrl', 'soundCrowdUrl',
+          'updatedAt', 'updatedBy'
+        ])
+        && incoming().diff(existing()).changedKeys().hasOnly([
+          'adsEnabled', 'adsensePublisherId',
+          'adsenseAutoAds', 'adsenseTestMode', 'adsenseHidePlaceholders', 'adsTxtCustomLines',
+          'topSlotId', 'topSlotFormat', 'topSlotSource', 'topSlotImageUrl', 'topSlotLinkUrl', 'topSlotTitle', 'topSlotEnabled',
+          'inContentSlotId', 'inContentSlotFormat', 'inContentSlotSource', 'inContentSlotImageUrl', 'inContentSlotLinkUrl', 'inContentSlotTitle', 'inContentSlotEnabled',
+          'footerSlotId', 'footerSlotFormat', 'footerSlotSource', 'footerSlotImageUrl', 'footerSlotLinkUrl', 'footerSlotTitle', 'footerSlotEnabled',
+          'mobileSlotId', 'mobileSlotFormat', 'mobileSlotSource', 'mobileSlotImageUrl', 'mobileSlotLinkUrl', 'mobileSlotTitle', 'mobileSlotEnabled',
+          'sponsorEnabled', 'sponsorName', 'sponsorTagline', 'sponsorLogoUrl', 'sponsorImageUrl', 'sponsorLinkUrl',
+          'siteName', 'contactEmail',
+          'animationsEnabled', 'broadcastNewsMarqueeEnabled', 'winProbabilityEnabled', 'winProbOverrideEnabled', 'winProbBattingPct',
+          'obsTargetPanel', 'obsWinProbBar', 'obsRunRateGraph',
+          'announcementEnabled', 'announcementText', 'announcementLinkUrl',
+          'mobileAdsEnabled', 'mobileSponsorEnabled', 'mobileNewsTickerEnabled', 'mobilePollEnabled',
+          'mobileScorecardEnabled', 'mobileNewsPageEnabled', 'mobileBlogPageEnabled', 'mobileBrandBadge',
+          'appDownloadEnabled', 'apkUrl', 'appVersion',
+          'gameDownloadEnabled', 'gameApkUrl', 'gameSizeLabel',
+          'holdActive', 'holdReason', 'holdObsEnabled', 'holdVideoEnabled', 'holdVideoLoop',
+          'holdVideoUrls', 'holdSponsorEnabled', 'holdSponsorMode', 'holdSponsorImageUrl',
+          'holdSponsorLinkUrl', 'nextMatchName', 'nextMatchTime',
+          'matchTimerActive', 'matchTimerStartedAt', 'matchTimerAccumulatedMs',
+          'tvEnabled', 'tvObsEnabled', 'tvFullScreenTakeover', 'tvLoop', 'tvBatBallBetweenAds', 'tvBatBallGapSec',
+          'tvPlayNowItemId', 'tvPlayNowNonce', 'tvPlaybackStopped', 'tvSponsorName', 'tvSponsorLink', 'tvPlaylist',
+          'soundEnabled', 'soundObsEnabled', 'soundEffectsVolume', 'soundCrowdVolume',
+          'soundVoiceRate', 'soundVoiceVolume',
+          'soundFourUrl', 'soundSixUrl', 'soundWicketUrl', 'soundCrowdUrl',
+          'updatedAt', 'updatedBy'
+        ]);
+      allow delete: if isValidId(configId) && isAdmin();
+    }
+
+    // Admin Media Library: Admin-only read/list/create/update/delete
+    match /media_library/{mediaId} {
+      allow get: if isValidId(mediaId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isValidId(mediaId) && isAdmin() && isValidMediaLibraryItem(incoming())
+        && incoming().id == mediaId
+        && incoming().createdAt == request.time;
+      allow update: if isValidId(mediaId) && isAdmin() && isValidMediaLibraryItem(incoming())
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && incoming().authorUid == existing().authorUid
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'title', 'mediaType', 'url', 'durationSec', 'source',
+          'category', 'description', 'storedInFirebase', 'updatedAt', 'authorUid'
+        ]);
+      allow delete: if isValidId(mediaId) && isAdmin();
+    }
+
+    // Live Fan Poll: Single-doc public get & strictly atomic +1 vote updates; Admin-only delete
+    match /match_polls/{pollId} {
+      allow get: if isValidId(pollId);
+      allow list: if false;
+      allow create: if isValidId(pollId) && isValidMatchPoll(incoming())
+        && incoming().id == pollId
+        && (incoming().team1Votes + incoming().team2Votes + incoming().drawVotes) == 1;
+      allow update: if isValidId(pollId) && isValidMatchPoll(incoming())
+        && incoming().id == existing().id
+        && incoming().matchId == existing().matchId
+        && incoming().team1Code == existing().team1Code
+        && incoming().team1Name == existing().team1Name
+        && incoming().team2Code == existing().team2Code
+        && incoming().team2Name == existing().team2Name
+        && incoming().diff(existing()).affectedKeys().hasOnly(['team1Votes', 'team2Votes', 'drawVotes', 'updatedAt'])
+        && (
+          (incoming().team1Votes == existing().team1Votes + 1 && incoming().team2Votes == existing().team2Votes && incoming().drawVotes == existing().drawVotes)
+          || (incoming().team2Votes == existing().team2Votes + 1 && incoming().team1Votes == existing().team1Votes && incoming().drawVotes == existing().drawVotes)
+          || (incoming().drawVotes == existing().drawVotes + 1 && incoming().team1Votes == existing().team1Votes && incoming().team2Votes == existing().team2Votes)
+        );
+      allow delete: if isValidId(pollId) && isAdmin();
+    }
+
+    // Admin Saved Video Sources: Admin-only read/list/create/update/delete
+    match /video_sources/{sourceId} {
+      allow get: if isValidId(sourceId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isValidId(sourceId) && isAdmin() && isValidVideoSource(incoming())
+        && incoming().id == sourceId
+        && incoming().createdAt == request.time;
+      allow update: if isValidId(sourceId) && isAdmin() && isValidVideoSource(incoming())
+        && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt
+        && incoming().authorUid == existing().authorUid
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'name', 'sourceType', 'url', 'category', 'notes', 'durationSec', 'updatedAt', 'authorUid'
+        ]);
+      allow delete: if isValidId(sourceId) && isAdmin();
+    }
+  }
+}
