@@ -9,6 +9,7 @@ import {
   HoldSponsorMode,
   MatchTimerConfig,
   TvScreenConfig,
+  TvPlaylistItem,
   SoundSettingsConfig,
   AnnouncementConfig,
   MobileAppConfig,
@@ -27,7 +28,11 @@ import {
   fetchAdminViewerStats,
   uploadApkFile,
   verifyApkDownloadUrl,
-  ApkUrlVerifyResult
+  ApkUrlVerifyResult,
+  MediaUploadDiagnosticEvent,
+  subscribeMediaUploadDiagnostics,
+  getRecentMediaUploadDiagnostics,
+  clearMediaUploadDiagnostics
 } from '../../services/api';
 import {
   Tv,
@@ -77,7 +82,9 @@ import {
   Upload,
   Download,
   TrendingUp,
-  Gamepad2
+  Gamepad2,
+  Activity,
+  ListChecks
 } from 'lucide-react';
 import { useContent } from '../../context/ContentContext';
 import { saveSiteConfigToFirestore } from '../../services/firebaseContentService';
@@ -103,6 +110,10 @@ import { StudioVideoSources } from './StudioVideoSources';
 import { StudioSoundPanel } from './StudioSoundPanel';
 import { StudioAiNewsPanel } from './StudioAiNewsPanel';
 import { StudioScrollingTickerCard } from './StudioScrollingTickerCard';
+import { ApkUrlDiagnosticTool } from './ApkUrlDiagnosticTool';
+import { StudioNetworkMonitor } from './StudioNetworkMonitor';
+import { StudioUploadHistory } from './StudioUploadHistory';
+import { BatchQueueSummary, StudioBatchMediaUploader } from './StudioBatchMediaUploader';
 import { extractYouTubeVideoId, isYouTubeChannelLiveUrl } from '../Common/HoldYouTubePlayer';
 import { MatchElapsedTimer, computeElapsedMs } from '../Broadcast/MatchElapsedTimer';
 
@@ -171,6 +182,33 @@ export const StudioAdmin: React.FC<StudioAdminProps> = ({
   const [isUploadingGameApk, setIsUploadingGameApk] = useState(false);
   const [isVerifyingGameApk, setIsVerifyingGameApk] = useState(false);
   const [gameApkVerifyStatus, setGameApkVerifyStatus] = useState<ApkUrlVerifyResult | null>(null);
+  const [mediaUploadLogs, setMediaUploadLogs] = useState<MediaUploadDiagnosticEvent[]>(() =>
+    getRecentMediaUploadDiagnostics()
+  );
+  const [latestMediaError, setLatestMediaError] = useState<MediaUploadDiagnosticEvent | null>(() => {
+    const existing = getRecentMediaUploadDiagnostics().find((ev) => ev.status === 'error');
+    return existing || null;
+  });
+  const [showMediaTrace, setShowMediaTrace] = useState(false);
+  const [networkMonitorOpen, setNetworkMonitorOpen] = useState(false);
+  const handleAutoOpenNetworkMonitor = React.useCallback(() => {
+    setNetworkMonitorOpen(true);
+  }, []);
+  const [uploadHistoryOpen, setUploadHistoryOpen] = useState(true);
+  const handleAutoOpenUploadHistory = React.useCallback(() => {
+    setUploadHistoryOpen(true);
+  }, []);
+  const [batchUploadOpen, setBatchUploadOpen] = useState(true);
+  const [batchQueueSummary, setBatchQueueSummary] = useState<BatchQueueSummary>({
+    running: false,
+    total: 0,
+    completed: 0,
+    failed: 0,
+    queued: 0
+  });
+  const handleAutoOpenBatchUpload = React.useCallback(() => {
+    setBatchUploadOpen(true);
+  }, []);
 
   const effectiveViewerStats: LiveViewerStats = liveViewerStatsProp || polledViewerStats || {
     total: 0,
@@ -235,6 +273,10 @@ export const StudioAdmin: React.FC<StudioAdminProps> = ({
     sponsorLink: '',
     playlist: []
   };
+  const tvScreenRef = React.useRef<TvScreenConfig>(tvScreen);
+  tvScreenRef.current = tvScreen;
+  const siteSettingsRef = React.useRef<MonetizationConfig | null>(siteSettings);
+  siteSettingsRef.current = siteSettings;
   const tvPlaylistItems = tvScreen.playlist || [];
   const matchedTvIdx = tvScreen.playNowItemId
     ? tvPlaylistItems.findIndex((item) => item.id === tvScreen.playNowItemId)
@@ -404,6 +446,18 @@ export const StudioAdmin: React.FC<StudioAdminProps> = ({
   }, []);
 
   useEffect(() => {
+    return subscribeMediaUploadDiagnostics((event, history) => {
+      setMediaUploadLogs(history);
+      if (event.status === 'error') {
+        setLatestMediaError(event);
+        setShowMediaTrace(true);
+      } else if (event.status === 'success' && event.stage === 'complete') {
+        setLatestMediaError(null);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
     if (!cloudMonetization?.broadcastSettings) return;
     setSiteSettings((prev) => mergeMonetization(prev));
     if (cloudMonetization.broadcastSettings.appDownload?.apkUrl !== undefined) {
@@ -518,6 +572,55 @@ export const StudioAdmin: React.FC<StudioAdminProps> = ({
       setIsSavingBroadcastWidget(false);
     }
   };
+
+  const handleAppendBatchTvPlaylistItem = React.useCallback(
+    async (newItem: TvPlaylistItem): Promise<{ added: boolean; note?: string }> => {
+      if (!isAuthorized) {
+        return { added: false, note: 'Admin not authorized' };
+      }
+      const latestTv = tvScreenRef.current;
+      const existingPlaylist = Array.isArray(latestTv.playlist) ? latestTv.playlist : [];
+      if (existingPlaylist.length >= 20) {
+        return { added: false, note: 'TV playlist full (20/20)' };
+      }
+
+      const nextTvScreen: TvScreenConfig = {
+        ...latestTv,
+        playlist: [...existingPlaylist, newItem],
+        playbackStopped: false
+      };
+      tvScreenRef.current = nextTvScreen;
+
+      const mergedCurrent = mergeMonetization(siteSettingsRef.current)?.broadcastSettings;
+      const currentSettings = mergedCurrent || siteSettingsRef.current?.broadcastSettings || {
+        animationsEnabled: true,
+        breakScreen: { active: false, type: 'drinks' as const, subtitle: '' },
+        winProbabilityEnabled: true,
+        winProbabilityOverride: { enabled: false, battingTeamPct: 50 },
+        obsPanels: { targetPanel: true, winProbabilityBar: true, runRateGraph: true },
+        appDownload: { enabled: true, apkUrl: '', version: '1.0.0' },
+        holdScreen
+      };
+
+      const updated = await updateMonetizationConfig(
+        {
+          broadcastSettings: {
+            ...currentSettings,
+            tvScreen: nextTvScreen
+          }
+        },
+        adminPin
+      );
+      siteSettingsRef.current = updated;
+      setSiteSettings(updated);
+      setBackupMonetization(updated);
+      if (isFirebaseAdmin) {
+        await saveSiteConfigToFirestore(updated);
+      }
+      return { added: true };
+    },
+    [adminPin, holdScreen, isAuthorized, isFirebaseAdmin, mergeMonetization, setBackupMonetization]
+  );
 
   const updateSoundSettingsField = async (
     patch: Partial<SoundSettingsConfig>,
@@ -1453,6 +1556,39 @@ export const StudioAdmin: React.FC<StudioAdminProps> = ({
           <div className="flex items-center gap-2.5 flex-wrap shrink-0">
             <button
               type="button"
+              aria-expanded={batchUploadOpen}
+              onClick={() => setBatchUploadOpen((prev) => !prev)}
+              className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 border transition-all whitespace-nowrap shrink-0 ${
+                batchUploadOpen
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-300 shadow-md'
+                  : 'bg-slate-950 hover:bg-slate-800 text-slate-200 border-slate-700'
+              }`}
+            >
+              <ListChecks className="w-3.5 h-3.5 shrink-0" />
+              <span>
+                Batch Upload
+                {batchQueueSummary.total > 0
+                  ? ` (${batchQueueSummary.completed}/${batchQueueSummary.total})`
+                  : ''}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              aria-expanded={networkMonitorOpen}
+              onClick={() => setNetworkMonitorOpen((prev) => !prev)}
+              className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 border transition-all whitespace-nowrap shrink-0 ${
+                networkMonitorOpen
+                  ? 'bg-amber-600 hover:bg-amber-500 text-white border-amber-300 shadow-md'
+                  : 'bg-slate-950 hover:bg-slate-800 text-slate-200 border-slate-700'
+              }`}
+            >
+              <Activity className="w-3.5 h-3.5 shrink-0" />
+              <span>Network Monitor</span>
+            </button>
+
+            <button
+              type="button"
               role="switch"
               aria-checked={testViewEnabled}
               onClick={() => setTestViewEnabled((prev) => !prev)}
@@ -1517,19 +1653,188 @@ export const StudioAdmin: React.FC<StudioAdminProps> = ({
 
       {statusMessage && (
         <div
-          className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
+          className={`p-3 rounded-xl text-xs flex items-center justify-between gap-2 ${
             statusMessage.type === 'success'
               ? 'bg-emerald-950/40 border border-emerald-800 text-emerald-300'
               : 'bg-rose-950/40 border border-rose-800 text-rose-300'
           }`}
         >
-          {statusMessage.type === 'success' ? (
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-          ) : (
-            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
-          )}
-          <span>{statusMessage.text}</span>
+          <div className="flex items-center gap-2 min-w-0">
+            {statusMessage.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+            )}
+            <span className="break-words">{statusMessage.text}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setStatusMessage(null)}
+            aria-label="Dismiss status message"
+            className="p-1 rounded-lg hover:bg-slate-800/70 text-slate-400 hover:text-white shrink-0"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
+      )}
+
+      {isAuthorized && latestMediaError && (
+        <div
+          role="alert"
+          className="rounded-2xl border border-rose-500/60 bg-rose-950/35 p-4 shadow-xl space-y-3"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="flex items-start gap-2.5 min-w-0">
+              <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-black uppercase tracking-wider text-rose-200">
+                    Media Upload Rejected
+                  </span>
+                  <span className="px-2 py-0.5 rounded bg-rose-500/20 border border-rose-400/40 font-mono text-[10px] font-bold text-rose-200">
+                    {latestMediaError.code}
+                  </span>
+                  {latestMediaError.httpStatus !== undefined && (
+                    <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 font-mono text-[10px] text-amber-300">
+                      HTTP {latestMediaError.httpStatus}
+                    </span>
+                  )}
+                  {latestMediaError.firebaseCode && (
+                    <span className="px-2 py-0.5 rounded bg-slate-900 border border-slate-700 font-mono text-[10px] text-amber-300">
+                      {latestMediaError.firebaseCode}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs font-semibold text-rose-100 mt-1 break-words">
+                  {latestMediaError.message}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowMediaTrace((prev) => !prev)}
+                className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[11px] font-bold text-slate-200"
+              >
+                {showMediaTrace ? 'Hide Trace' : `Trace (${mediaUploadLogs.length})`}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  clearMediaUploadDiagnostics();
+                  setMediaUploadLogs([]);
+                  setLatestMediaError(null);
+                  setShowMediaTrace(false);
+                }}
+                aria-label="Clear upload error diagnostics"
+                className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-[11px]">
+            <div className="bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2">
+              <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">
+                File Name
+              </div>
+              <div className="text-slate-100 font-mono truncate mt-0.5" title={latestMediaError.fileName}>
+                {latestMediaError.fileName || 'unknown'}
+              </div>
+            </div>
+            <div className="bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2">
+              <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">
+                File Size
+              </div>
+              <div className="text-slate-100 font-mono mt-0.5">
+                {latestMediaError.fileSizeMb} MB ({latestMediaError.fileSizeBytes.toLocaleString()} bytes)
+              </div>
+            </div>
+            <div className="bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2">
+              <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">
+                MIME / Extension
+              </div>
+              <div className="text-slate-100 font-mono truncate mt-0.5">
+                {latestMediaError.mimeType || 'none'} (.{latestMediaError.detectedExt || 'none'})
+              </div>
+            </div>
+            <div className="bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-2">
+              <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">
+                Stage &amp; Auth Check
+              </div>
+              <div className="text-slate-100 font-mono mt-0.5">
+                {latestMediaError.stage} • PIN: {adminPin.trim() ? 'OK' : 'Missing'} • FB:{' '}
+                {isFirebaseAdmin ? 'ON' : 'OFF'}
+              </div>
+            </div>
+          </div>
+
+          {showMediaTrace && mediaUploadLogs.length > 0 && (
+            <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-3 space-y-1.5">
+              <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-slate-400">
+                <span>Upload Pipeline Diagnostic Log (Latest {Math.min(6, mediaUploadLogs.length)})</span>
+                <span>{new Date(latestMediaError.timestamp).toLocaleTimeString()}</span>
+              </div>
+              <div className="space-y-1 max-h-40 overflow-y-auto">
+                {mediaUploadLogs.slice(0, 6).map((ev) => (
+                  <div
+                    key={ev.id}
+                    className="flex flex-wrap items-center gap-2 text-[11px] font-mono bg-slate-900/70 rounded-lg px-2.5 py-1.5 border border-slate-800/80"
+                  >
+                    <span
+                      className={`font-bold uppercase text-[10px] ${
+                        ev.status === 'error'
+                          ? 'text-rose-400'
+                          : ev.status === 'warning'
+                          ? 'text-amber-300'
+                          : ev.status === 'success'
+                          ? 'text-emerald-400'
+                          : 'text-sky-300'
+                      }`}
+                    >
+                      [{ev.stage}]
+                    </span>
+                    <span className="text-slate-400">{ev.code}</span>
+                    <span className="text-slate-200 break-words flex-1">{ev.message}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {isAuthorized && (
+        <StudioBatchMediaUploader
+          isOpen={batchUploadOpen}
+          onToggleOpen={() => setBatchUploadOpen((prev) => !prev)}
+          onAutoOpen={handleAutoOpenBatchUpload}
+          adminPin={adminPin}
+          isAuthorized={isAuthorized}
+          isFirebaseAdmin={isFirebaseAdmin}
+          tvPlaylistCount={tvPlaylistItems.length}
+          onAppendTvPlaylistItem={handleAppendBatchTvPlaylistItem}
+          onStatusMessage={setStatusMessage}
+          onQueueSummaryChange={setBatchQueueSummary}
+        />
+      )}
+
+      {isAuthorized && (
+        <StudioNetworkMonitor
+          isOpen={networkMonitorOpen}
+          onToggleOpen={() => setNetworkMonitorOpen((prev) => !prev)}
+          onAutoOpen={handleAutoOpenNetworkMonitor}
+        />
+      )}
+
+      {isAuthorized && (
+        <StudioUploadHistory
+          isOpen={uploadHistoryOpen}
+          onToggleOpen={() => setUploadHistoryOpen((prev) => !prev)}
+          onAutoOpen={handleAutoOpenUploadHistory}
+        />
       )}
 
       {/* Firebase Cloud Sync Auth Banner (only visible after Admin PIN is verified) */}
@@ -2260,6 +2565,17 @@ export const StudioAdmin: React.FC<StudioAdminProps> = ({
               </div>
             )}
           </div>
+
+          {/* 0.7 APK URL HEAD (200 OK) Diagnostic Utility */}
+          <ApkUrlDiagnosticTool
+            adminPin={adminPin}
+            appApkUrl={apkUrlInput}
+            gameApkUrl={gameApkUrlInput}
+            onSelectGameUrl={(url) => {
+              setGameApkUrlInput(url);
+              setGameApkVerifyStatus(null);
+            }}
+          />
 
           {/* 1. Global Website + Mobile Announcement Notice Bar */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4">

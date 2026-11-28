@@ -10,6 +10,7 @@ import {
 import { useContent } from '../../context/ContentContext';
 import {
   deleteVideoSourceFromFirestore,
+  deleteVideoSourcesBatchFromFirestore,
   saveVideoSourcesBatchToFirestore,
   saveVideoSourceToFirestore,
   uploadTvVideoAsset
@@ -86,7 +87,8 @@ export const StudioVideoSources: React.FC<StudioVideoSourcesProps> = ({
     isFirebaseAdmin,
     upsertBackupVideoSource,
     upsertBackupVideoSourcesBatch,
-    removeBackupVideoSource
+    removeBackupVideoSource,
+    removeBackupVideoSourcesBatch
   } = useContent();
 
   // Form & Batch Import state
@@ -106,11 +108,13 @@ export const StudioVideoSources: React.FC<StudioVideoSourcesProps> = ({
   const [isSwitchingId, setIsSwitchingId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  // Filter / preview / delete
+  // Filter / preview / delete / batch selection
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | VideoSourceType>('all');
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<VideoSourceConfig | null>(null);
+  const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([]);
+  const [batchDeleteTargets, setBatchDeleteTargets] = useState<VideoSourceConfig[] | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const playlist = tvScreen.playlist || [];
@@ -181,11 +185,6 @@ export const StudioVideoSources: React.FC<StudioVideoSourcesProps> = ({
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-
-    if (file.size > 60 * 1024 * 1024) {
-      notify('Local video file 60MB se chhoti honi chahiye.', 'error');
-      return;
-    }
 
     setFeedback(null);
     setIsUploading(true);
@@ -348,6 +347,33 @@ export const StudioVideoSources: React.FC<StudioVideoSourcesProps> = ({
   };
 
   const handleConfirmDelete = async () => {
+    if (batchDeleteTargets && batchDeleteTargets.length > 0) {
+      const idsToDelete = batchDeleteTargets.map((s) => s.id);
+      const idSet = new Set(idsToDelete);
+      setIsDeleting(true);
+      try {
+        removeBackupVideoSourcesBatch(idsToDelete);
+        if (isFirebaseAdmin) {
+          await deleteVideoSourcesBatchFromFirestore(idsToDelete);
+        }
+        if (editingId && idSet.has(editingId)) resetForm();
+        if (previewId && idSet.has(previewId)) setPreviewId(null);
+        setSelectedSourceIds((prev) => prev.filter((id) => !idSet.has(id)));
+        notify(
+          `${idsToDelete.length} selected video ${
+            idsToDelete.length === 1 ? 'source' : 'sources'
+          } permanently deleted.`,
+          'success'
+        );
+      } catch (err: any) {
+        notify(err?.message || 'Batch delete karne mein error aaya.', 'error');
+      } finally {
+        setIsDeleting(false);
+        setBatchDeleteTargets(null);
+      }
+      return;
+    }
+
     if (!deleteTarget) return;
     setIsDeleting(true);
     try {
@@ -357,6 +383,7 @@ export const StudioVideoSources: React.FC<StudioVideoSourcesProps> = ({
       }
       if (editingId === deleteTarget.id) resetForm();
       if (previewId === deleteTarget.id) setPreviewId(null);
+      setSelectedSourceIds((prev) => prev.filter((id) => id !== deleteTarget.id));
       notify(`"${deleteTarget.name}" Video Sources se delete ho gaya.`, 'success');
     } catch (err: any) {
       notify(err?.message || 'Delete karne mein error aaya.', 'error');
@@ -832,6 +859,76 @@ export const StudioVideoSources: React.FC<StudioVideoSourcesProps> = ({
           </div>
         )}
 
+        {/* Batch Select & Delete Action Bar */}
+        {videoSources.length > 0 && (() => {
+          const selectedSet = new Set(selectedSourceIds);
+          const selectedSources = videoSources.filter((s) => selectedSet.has(s.id));
+          const allFilteredSelected =
+            filteredSources.length > 0 && filteredSources.every((s) => selectedSet.has(s.id));
+
+          return (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-950/80 border border-slate-800 px-3.5 py-2">
+              <div className="flex items-center gap-2.5">
+                <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-200 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={allFilteredSelected}
+                    disabled={filteredSources.length === 0 || isDeleting}
+                    onChange={() => {
+                      const filteredIds = filteredSources.map((s) => s.id);
+                      const filteredSet = new Set(filteredIds);
+                      if (allFilteredSelected) {
+                        setSelectedSourceIds((prev) => prev.filter((id) => !filteredSet.has(id)));
+                      } else {
+                        setSelectedSourceIds((prev) =>
+                          Array.from(new Set([...prev, ...filteredIds]))
+                        );
+                      }
+                    }}
+                    className="w-4 h-4 rounded border-slate-600 bg-slate-900 text-rose-500 focus:ring-0"
+                  />
+                  <span>
+                    {allFilteredSelected
+                      ? `Deselect All (${filteredSources.length})`
+                      : `Select All (${filteredSources.length})`}
+                  </span>
+                </label>
+
+                {selectedSources.length > 0 && (
+                  <span className="px-2 py-0.5 rounded-md bg-rose-500/15 border border-rose-500/40 text-[11px] font-black text-rose-200 tabular-nums">
+                    {selectedSources.length} Selected
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                {selectedSources.length > 0 && (
+                  <button
+                    type="button"
+                    disabled={isDeleting}
+                    onClick={() => setSelectedSourceIds([])}
+                    className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[11px] font-bold text-slate-300"
+                  >
+                    Clear Selection
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={selectedSources.length === 0 || isDeleting}
+                  onClick={() => setBatchDeleteTargets(selectedSources)}
+                  className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-black flex items-center gap-1.5 shadow disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>
+                    Delete Selected
+                    {selectedSources.length > 0 ? ` (${selectedSources.length})` : ''}
+                  </span>
+                </button>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Saved Video Sources Grid */}
         {filteredSources.length === 0 ? (
           <div className="p-6 text-center rounded-xl bg-slate-950 border border-dashed border-slate-800 text-xs text-slate-400 space-y-1.5">
@@ -853,6 +950,7 @@ export const StudioVideoSources: React.FC<StudioVideoSourcesProps> = ({
                 Boolean(activeLiveUrlKey) &&
                 normalizeUrlForComparison(src.url) === activeLiveUrlKey;
               const isPreviewOpen = previewId === src.id;
+              const isSelected = selectedSourceIds.includes(src.id);
               const slotIdx = playlist.findIndex(
                 (p, idx) => idx < 4 && normalizeUrlForComparison(p.url) === normalizeUrlForComparison(src.url)
               );
@@ -861,7 +959,9 @@ export const StudioVideoSources: React.FC<StudioVideoSourcesProps> = ({
                 <div
                   key={src.id}
                   className={`rounded-xl border p-3.5 space-y-2.5 transition-colors ${
-                    isOnAir
+                    isSelected
+                      ? 'bg-rose-950/20 border-rose-500/70 ring-1 ring-rose-500/35'
+                      : isOnAir
                       ? 'bg-emerald-950/30 border-emerald-400/70'
                       : editingId === src.id
                       ? 'bg-sky-950/30 border-sky-500/60'
@@ -869,6 +969,20 @@ export const StudioVideoSources: React.FC<StudioVideoSourcesProps> = ({
                   }`}
                 >
                   <div className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      disabled={isDeleting}
+                      onChange={() =>
+                        setSelectedSourceIds((prev) =>
+                          prev.includes(src.id)
+                            ? prev.filter((id) => id !== src.id)
+                            : [...prev, src.id]
+                        )
+                      }
+                      aria-label={`Select ${src.name} for batch delete`}
+                      className="w-4 h-4 mt-1 rounded border-slate-600 bg-slate-900 text-rose-500 focus:ring-0 shrink-0 cursor-pointer"
+                    />
                     <VideoSourceThumbnail
                       name={src.name}
                       url={src.url}
@@ -1026,11 +1140,22 @@ export const StudioVideoSources: React.FC<StudioVideoSourcesProps> = ({
       </div>
 
       <ConfirmDeleteModal
-        open={Boolean(deleteTarget)}
-        title="Video Source Delete Karein?"
+        open={Boolean(deleteTarget || (batchDeleteTargets && batchDeleteTargets.length > 0))}
+        title={
+          batchDeleteTargets && batchDeleteTargets.length > 0
+            ? `Delete ${batchDeleteTargets.length} Selected Video ${
+                batchDeleteTargets.length === 1 ? 'Source' : 'Sources'
+              }?`
+            : 'Video Source Delete Karein?'
+        }
         itemName={deleteTarget?.name}
+        itemNames={batchDeleteTargets?.map((s) => s.name)}
         isDeleting={isDeleting}
-        onCancel={() => !isDeleting && setDeleteTarget(null)}
+        onCancel={() => {
+          if (isDeleting) return;
+          setDeleteTarget(null);
+          setBatchDeleteTargets(null);
+        }}
         onConfirm={handleConfirmDelete}
       />
     </div>

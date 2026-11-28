@@ -11,7 +11,7 @@ import {
   where,
   writeBatch
 } from 'firebase/firestore';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { getDownloadURL, ref, uploadBytes, uploadBytesResumable } from 'firebase/storage';
 import { ADMIN_EMAIL, auth, db, storage } from '../firebase';
 import {
   AdSlotFormat,
@@ -35,7 +35,14 @@ import {
   VideoSourceType
 } from '../types/cricket';
 import { compressImageFile, dataUrlToBlob } from '../utils/mediaStorage';
-import { uploadAdminMedia, uploadAudioFile, uploadTvMediaFile } from './api';
+import {
+  emitMediaUploadDiagnostic,
+  recordFailedUploadHistory,
+  uploadAdminMedia,
+  uploadAudioFile,
+  uploadTvMediaFile,
+  validateVideoMediaFile
+} from './api';
 
 export enum OperationType {
   CREATE = 'create',
@@ -129,15 +136,19 @@ export async function uploadImageAsset(
   folder: 'players' | 'teams' | 'news' | 'blogs' | 'sponsors' | 'ads' | 'tv_ads',
   assetKey: string,
   adminPin?: string,
-  maxDim = 640
+  maxDim = 640,
+  onProgress?: (pct: number, stage: string) => void
 ): Promise<{ url: string; dataUrl: string; storedInFirebase: boolean; storageError?: string }> {
+  onProgress?.(10, 'Compressing image...');
   const maxBytes = folder === 'players' || folder === 'teams' ? 140_000 : 320_000;
   const dataUrl = await compressImageFile(file, maxDim, maxBytes);
+  onProgress?.(35, 'Image compressed');
   const safeKey = sanitizeFirestoreId(assetKey, folder);
   let storageError: string | undefined;
 
   if (isFirebaseAdminSignedIn()) {
     try {
+      onProgress?.(55, 'Uploading to Firebase Storage...');
       const blob = dataUrlToBlob(dataUrl);
       const mime = blob.type || 'image/jpeg';
       const ext = mime.includes('png')
@@ -154,6 +165,7 @@ export async function uploadImageAsset(
         cacheControl: 'public, max-age=31536000'
       });
       const downloadUrl = await getDownloadURL(storageRef);
+      onProgress?.(100, 'Uploaded to Firebase Storage');
       return { url: downloadUrl, dataUrl, storedInFirebase: true };
     } catch (err: any) {
       storageError = err?.code || err?.message || 'Firebase Storage upload failed';
@@ -165,8 +177,10 @@ export async function uploadImageAsset(
 
   if (adminPin) {
     try {
+      onProgress?.(70, 'Uploading via Fetch to Express server...');
       const serverRes = await uploadAdminMedia(dataUrl, `${folder}_${safeKey}`, adminPin);
       if (serverRes.imageUrl) {
+        onProgress?.(100, 'Uploaded to Express server');
         return { url: serverRes.imageUrl, dataUrl, storedInFirebase: false, storageError };
       }
     } catch (err) {
@@ -174,6 +188,21 @@ export async function uploadImageAsset(
     }
   }
 
+  if (!adminPin && storageError) {
+    recordFailedUploadHistory({
+      timestamp: Date.now(),
+      fileName: file.name || `${folder}_${safeKey}`,
+      fileSizeBytes: file.size || 0,
+      fileSizeMb: ((file.size || 0) / (1024 * 1024)).toFixed(2),
+      mediaKind: 'image',
+      errorCode: storageError.includes('/') ? storageError : 'IMAGE_UPLOAD_UNAVAILABLE',
+      firebaseCode: storageError.includes('/') ? storageError : undefined,
+      source: storageError.includes('/') ? 'firebase' : 'client',
+      message: `${storageError} (and no Admin PIN provided for Express server fallback).`
+    });
+  }
+
+  onProgress?.(100, 'Completed');
   return { url: dataUrl, dataUrl, storedInFirebase: false, storageError };
 }
 
@@ -187,7 +216,18 @@ export async function uploadAudioAsset(
   adminPin?: string
 ): Promise<{ url: string; storedInFirebase: boolean }> {
   if (file.size > 3 * 1024 * 1024) {
-    throw new Error('Audio file 3MB se chhoti honi chahiye taake app tez chale.');
+    const msg = 'Audio file 3MB se chhoti honi chahiye taake app tez chale.';
+    recordFailedUploadHistory({
+      timestamp: Date.now(),
+      fileName: file.name || `${slot}_audio`,
+      fileSizeBytes: file.size || 0,
+      fileSizeMb: ((file.size || 0) / (1024 * 1024)).toFixed(2),
+      mediaKind: 'audio',
+      errorCode: 'AUDIO_TOO_LARGE',
+      source: 'client',
+      message: msg
+    });
+    throw new Error(msg);
   }
 
   if (isFirebaseAdminSignedIn()) {
@@ -208,59 +248,248 @@ export async function uploadAudioAsset(
   }
 
   if (!adminPin) {
-    throw new Error('Admin PIN required to upload audio file.');
+    const msg = 'Admin PIN required to upload audio file.';
+    recordFailedUploadHistory({
+      timestamp: Date.now(),
+      fileName: file.name || `${slot}_audio`,
+      fileSizeBytes: file.size || 0,
+      fileSizeMb: ((file.size || 0) / (1024 * 1024)).toFixed(2),
+      mediaKind: 'audio',
+      errorCode: 'MISSING_ADMIN_PIN',
+      source: 'client',
+      message: msg
+    });
+    throw new Error(msg);
   }
   const serverRes = await uploadAudioFile(file, adminPin);
   return { url: serverRes.url, storedInFirebase: false };
 }
 
+async function uploadToFirebaseStorageWithTimeout(
+  storageRef: ReturnType<typeof ref>,
+  file: Blob,
+  contentType: string,
+  stallTimeoutMs = 8000,
+  onProgress?: (pct: number) => void
+): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const task = uploadBytesResumable(storageRef, file, {
+      contentType,
+      cacheControl: 'public, max-age=31536000'
+    });
+
+    let settled = false;
+    let lastBytes = -1;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const resetStallTimer = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        try {
+          task.cancel();
+        } catch {}
+        reject(new Error('Firebase Storage upload timed out'));
+      }, stallTimeoutMs);
+    };
+
+    resetStallTimer();
+
+    task.on(
+      'state_changed',
+      (snapshot) => {
+        if (snapshot.totalBytes > 0) {
+          const pct = Math.min(99, Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100));
+          onProgress?.(pct);
+        }
+        if (snapshot.bytesTransferred !== lastBytes) {
+          lastBytes = snapshot.bytesTransferred;
+          resetStallTimer();
+        }
+      },
+      (err) => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        reject(err);
+      },
+      async () => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        try {
+          const url = await getDownloadURL(task.snapshot.ref);
+          resolve(url);
+        } catch (err) {
+          reject(err);
+        }
+      }
+    );
+  });
+}
+
 /**
  * Uploads a pre-recorded or live-recorded video clip (< 60MB) for Broadcast TV & Standby.
- * Tries Firebase Storage (`public/tv_ads/...`) when signed in as Admin, with automatic
- * fallback to the Express server `/api/admin/tv-media/upload` endpoint.
+ * Tries Firebase Storage (`public/tv_ads/...`) when signed in as Admin, with fast stall fallback
+ * to the Express server `/api/admin/tv-media/upload` endpoint.
  */
 export async function uploadTvVideoAsset(
   file: Blob,
   fileName: string,
   adminPin?: string,
-  folder: 'tv_ads' | 'media_library' = 'tv_ads'
+  folder: 'tv_ads' | 'media_library' = 'tv_ads',
+  onProgress?: (pct: number, stage: string) => void
 ): Promise<{ url: string; storedInFirebase: boolean }> {
-  if (file.size > 60 * 1024 * 1024) {
-    throw new Error('Video file 60MB se chhoti honi chahiye.');
+  const effectivePin =
+    (adminPin || '').trim() ||
+    (typeof window !== 'undefined' ? (localStorage.getItem('crex_admin_pin') || '').trim() : '');
+  const firebaseAdminActive = isFirebaseAdminSignedIn();
+
+  const validation = validateVideoMediaFile(file, fileName);
+  if (!validation.valid) {
+    emitMediaUploadDiagnostic({
+      stage: 'validation',
+      status: 'error',
+      code: validation.code,
+      message: validation.error || 'Selected video file rejected by validation.',
+      fileName: validation.fileName,
+      fileSizeBytes: validation.fileSizeBytes,
+      fileSizeMb: validation.fileSizeMb,
+      mimeType: validation.mimeType,
+      detectedExt: validation.detectedExt,
+      hasAdminPin: Boolean(effectivePin),
+      firebaseAdminActive
+    });
+    throw new Error(validation.error || 'Selected video file is invalid.');
   }
 
-  const rawType = (file.type || 'video/webm').split(';')[0].trim().toLowerCase();
-  const extFromMime: Record<string, string> = {
-    'video/mp4': 'mp4',
-    'video/webm': 'webm',
-    'video/ogg': 'ogg',
-    'video/quicktime': 'mov',
-    'video/x-m4v': 'm4v',
-    'video/x-matroska': 'mkv',
-    'video/3gpp': '3gp'
-  };
-  const extMatch = fileName.toLowerCase().match(/\.(mp4|webm|ogg|mov|m4v|mkv|3gp)$/);
-  const ext = extFromMime[rawType] || (extMatch ? extMatch[1] : 'webm');
+  emitMediaUploadDiagnostic({
+    stage: 'validation',
+    status: 'success',
+    code: 'VALIDATION_PASSED',
+    message: `Validated "${validation.fileName}" (${validation.fileSizeMb} MB, ${validation.safeMimeType}).`,
+    fileName: validation.fileName,
+    fileSizeBytes: validation.fileSizeBytes,
+    fileSizeMb: validation.fileSizeMb,
+    mimeType: validation.safeMimeType,
+    detectedExt: validation.detectedExt,
+    hasAdminPin: Boolean(effectivePin),
+    firebaseAdminActive
+  });
 
-  if (isFirebaseAdminSignedIn()) {
+  if (firebaseAdminActive) {
+    emitMediaUploadDiagnostic({
+      stage: 'firebase_storage',
+      status: 'info',
+      code: 'FIREBASE_UPLOAD_START',
+      message: `Uploading "${validation.fileName}" (${validation.fileSizeMb} MB) to Firebase Storage...`,
+      fileName: validation.fileName,
+      fileSizeBytes: validation.fileSizeBytes,
+      fileSizeMb: validation.fileSizeMb,
+      mimeType: validation.safeMimeType,
+      detectedExt: validation.detectedExt,
+      hasAdminPin: Boolean(effectivePin),
+      firebaseAdminActive: true
+    });
+
     try {
-      const storagePath = `public/${folder}/vid_${Date.now()}.${ext}`;
+      const storagePath = `public/${folder}/vid_${Date.now()}.${validation.detectedExt}`;
       const storageRef = ref(storage, storagePath);
-      await uploadBytes(storageRef, file, {
-        contentType: rawType.startsWith('video/') ? rawType : `video/${ext === 'mov' ? 'quicktime' : ext}`,
-        cacheControl: 'public, max-age=31536000'
+      onProgress?.(5, 'Starting Firebase Storage upload...');
+      const downloadUrl = await uploadToFirebaseStorageWithTimeout(
+        storageRef,
+        file,
+        validation.safeMimeType,
+        8000,
+        (pct) => onProgress?.(pct, `Firebase Storage ${pct}%`)
+      );
+      emitMediaUploadDiagnostic({
+        stage: 'complete',
+        status: 'success',
+        code: 'FIREBASE_UPLOAD_SUCCESS',
+        message: `Uploaded "${validation.fileName}" (${validation.fileSizeMb} MB) to Firebase Storage.`,
+        fileName: validation.fileName,
+        fileSizeBytes: validation.fileSizeBytes,
+        fileSizeMb: validation.fileSizeMb,
+        mimeType: validation.safeMimeType,
+        detectedExt: validation.detectedExt,
+        hasAdminPin: Boolean(effectivePin),
+        firebaseAdminActive: true,
+        targetUrl: downloadUrl
       });
-      const downloadUrl = await getDownloadURL(storageRef);
       return { url: downloadUrl, storedInFirebase: true };
-    } catch (err) {
-      console.warn('Firebase Storage TV video upload fallback to Express server:', err);
+    } catch (err: any) {
+      const firebaseCode =
+        err?.code ||
+        (String(err?.message || '').toLowerCase().includes('timed out')
+          ? 'storage/timeout'
+          : 'storage/unknown');
+      emitMediaUploadDiagnostic({
+        stage: 'firebase_storage',
+        status: 'warning',
+        code: 'FIREBASE_FALLBACK',
+        firebaseCode,
+        message: `Firebase Storage rejected/timed out (${firebaseCode}: ${
+          err?.message || 'upload failed'
+        }); falling back to Express server.`,
+        fileName: validation.fileName,
+        fileSizeBytes: validation.fileSizeBytes,
+        fileSizeMb: validation.fileSizeMb,
+        mimeType: validation.safeMimeType,
+        detectedExt: validation.detectedExt,
+        hasAdminPin: Boolean(effectivePin),
+        firebaseAdminActive: true
+      });
     }
+  } else {
+    emitMediaUploadDiagnostic({
+      stage: 'firebase_storage',
+      status: 'info',
+      code: 'FIREBASE_SKIPPED_NO_AUTH',
+      message: 'Firebase Admin Google login not active; routing video upload to Express server.',
+      fileName: validation.fileName,
+      fileSizeBytes: validation.fileSizeBytes,
+      fileSizeMb: validation.fileSizeMb,
+      mimeType: validation.safeMimeType,
+      detectedExt: validation.detectedExt,
+      hasAdminPin: Boolean(effectivePin),
+      firebaseAdminActive: false
+    });
   }
 
-  if (!adminPin) {
-    throw new Error('Admin PIN required to upload video file.');
+  if (!effectivePin) {
+    const msg =
+      'Admin PIN required to upload video file to Express server (Firebase Storage unavailable and no Admin PIN found).';
+    emitMediaUploadDiagnostic({
+      stage: 'validation',
+      status: 'error',
+      code: 'MISSING_ADMIN_PIN',
+      message: msg,
+      fileName: validation.fileName,
+      fileSizeBytes: validation.fileSizeBytes,
+      fileSizeMb: validation.fileSizeMb,
+      mimeType: validation.safeMimeType,
+      detectedExt: validation.detectedExt,
+      hasAdminPin: false,
+      firebaseAdminActive
+    });
+    throw new Error(msg);
   }
-  const serverRes = await uploadTvMediaFile(file, adminPin, fileName);
+
+  const serverRes = await uploadTvMediaFile(
+    file,
+    effectivePin,
+    validation.fileName,
+    (pct, phase) =>
+      onProgress?.(
+        pct,
+        phase === 'awaiting_response'
+          ? 'Awaiting Express server response...'
+          : `Uploading via XHR (${pct}%)`
+      )
+  );
+  onProgress?.(100, 'Upload complete');
   return { url: serverRes.url, storedInFirebase: false };
 }
 
@@ -1183,6 +1412,33 @@ export async function deleteMediaLibraryItemFromFirestore(mediaId: string): Prom
   }
 }
 
+export async function deleteMediaLibraryItemsBatchFromFirestore(mediaIds: string[]): Promise<number> {
+  requireFirebaseAdminUid();
+  const cleanIds = Array.from(
+    new Set(
+      (mediaIds || [])
+        .map((raw) => sanitizeFirestoreId(raw, 'media'))
+        .filter((id) => Boolean(id))
+    )
+  );
+  if (cleanIds.length === 0) return 0;
+
+  try {
+    const CHUNK_SIZE = 400;
+    for (let i = 0; i < cleanIds.length; i += CHUNK_SIZE) {
+      const chunk = cleanIds.slice(i, i + CHUNK_SIZE);
+      const batch = writeBatch(db);
+      for (const id of chunk) {
+        batch.delete(doc(db, 'media_library', id));
+      }
+      await batch.commit();
+    }
+    return cleanIds.length;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, 'media_library');
+  }
+}
+
 // ---------------------------------------------------------------------------
 // ADMIN SAVED VIDEO SOURCES (YouTube & Local Stream URL Configurations)
 // ---------------------------------------------------------------------------
@@ -1359,6 +1615,33 @@ export async function deleteVideoSourceFromFirestore(sourceId: string): Promise<
     await deleteDoc(doc(db, 'video_sources', id));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+export async function deleteVideoSourcesBatchFromFirestore(sourceIds: string[]): Promise<number> {
+  requireFirebaseAdminUid();
+  const cleanIds = Array.from(
+    new Set(
+      (sourceIds || [])
+        .map((raw) => sanitizeFirestoreId(raw, 'src'))
+        .filter((id) => Boolean(id))
+    )
+  );
+  if (cleanIds.length === 0) return 0;
+
+  try {
+    const CHUNK_SIZE = 400;
+    for (let i = 0; i < cleanIds.length; i += CHUNK_SIZE) {
+      const chunk = cleanIds.slice(i, i + CHUNK_SIZE);
+      const batch = writeBatch(db);
+      for (const id of chunk) {
+        batch.delete(doc(db, 'video_sources', id));
+      }
+      await batch.commit();
+    }
+    return cleanIds.length;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, 'video_sources');
   }
 }
 

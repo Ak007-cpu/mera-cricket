@@ -626,17 +626,122 @@ export async function uploadAdminMedia(
   prefix: string,
   adminPin: string
 ): Promise<{ success: boolean; imageUrl: string }> {
-  const res = await fetch(buildApiUrl('/api/admin/media/upload'), {
+  const endpoint = buildApiUrl('/api/admin/media/upload');
+  const trimmedPin = (adminPin || '').trim();
+  const requestHeaders = {
+    'Content-Type': 'application/json',
+    'x-admin-pin': trimmedPin
+  };
+  const approxBytes = imageDataUrl.length;
+  const logId = createMediaNetworkLogId();
+  const startedAt = Date.now();
+
+  upsertMediaNetworkLog({
+    id: logId,
+    startedAt,
+    transport: 'fetch',
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-admin-pin': adminPin
-    },
-    body: JSON.stringify({ imageDataUrl, prefix, adminPin })
+    url: endpoint,
+    mediaKind: 'image',
+    fileName: `${prefix || 'image'}.img`,
+    fileSizeBytes: approxBytes,
+    fileSizeMb: (approxBytes / (1024 * 1024)).toFixed(2),
+    phase: 'request_init',
+    progressPct: 10,
+    requestHeaders: maskSensitiveHeaders(requestHeaders),
+    ok: false
   });
-  const json = await res.json();
-  if (!res.ok) {
-    throw new Error(json.error || 'Failed to upload image');
+
+  let res: Response;
+  try {
+    upsertMediaNetworkLog({
+      id: logId,
+      startedAt,
+      transport: 'fetch',
+      method: 'POST',
+      url: endpoint,
+      mediaKind: 'image',
+      fileName: `${prefix || 'image'}.img`,
+      fileSizeBytes: approxBytes,
+      fileSizeMb: (approxBytes / (1024 * 1024)).toFixed(2),
+      phase: 'awaiting_response',
+      progressPct: 100,
+      requestHeaders: maskSensitiveHeaders(requestHeaders),
+      ok: false
+    });
+    res = await fetch(endpoint, {
+      method: 'POST',
+      headers: requestHeaders,
+      body: JSON.stringify({ imageDataUrl, prefix, adminPin })
+    });
+  } catch (networkErr: any) {
+    const endedAt = Date.now();
+    const errMsg = networkErr?.message || 'Fetch network failure';
+    upsertMediaNetworkLog({
+      id: logId,
+      startedAt,
+      endedAt,
+      durationMs: endedAt - startedAt,
+      transport: 'fetch',
+      method: 'POST',
+      url: endpoint,
+      mediaKind: 'image',
+      fileName: `${prefix || 'image'}.img`,
+      fileSizeBytes: approxBytes,
+      fileSizeMb: (approxBytes / (1024 * 1024)).toFixed(2),
+      phase: 'failed',
+      progressPct: 100,
+      requestHeaders: maskSensitiveHeaders(requestHeaders),
+      httpStatus: 0,
+      httpStatusText: 'Network Error',
+      networkError: errMsg,
+      serverErrorMessage: errMsg,
+      serverErrorCode: 'FETCH_NETWORK_ERROR',
+      ok: false
+    });
+    throw new Error(errMsg);
+  }
+
+  const endedAt = Date.now();
+  const rawText = await res.text();
+  let json: any = {};
+  try {
+    json = rawText ? JSON.parse(rawText) : {};
+  } catch {
+    json = { error: rawText?.slice(0, 300) || `HTTP ${res.status}` };
+  }
+  const ok = res.ok && Boolean(json?.imageUrl);
+  const resolvedErrorCode = !ok
+    ? res.status === 401
+      ? 'INVALID_ADMIN_PIN'
+      : json?.code || `HTTP_${res.status}`
+    : undefined;
+  upsertMediaNetworkLog({
+    id: logId,
+    startedAt,
+    endedAt,
+    durationMs: endedAt - startedAt,
+    transport: 'fetch',
+    method: 'POST',
+    url: endpoint,
+    mediaKind: 'image',
+    fileName: `${prefix || 'image'}.img`,
+    fileSizeBytes: approxBytes,
+    fileSizeMb: (approxBytes / (1024 * 1024)).toFixed(2),
+    phase: ok ? 'completed' : 'failed',
+    progressPct: 100,
+    requestHeaders: maskSensitiveHeaders(requestHeaders),
+    httpStatus: res.status,
+    httpStatusText: res.statusText || (ok ? 'OK' : 'Error'),
+    responseHeaders: headersToRecord(res.headers),
+    responseBody: rawText.slice(0, 8000),
+    serverErrorMessage: !ok ? json?.error || `HTTP ${res.status}` : undefined,
+    serverErrorCode: resolvedErrorCode,
+    ok
+  });
+
+  if (!ok) {
+    throw new Error(json?.error || 'Failed to upload image');
   }
   return json;
 }
@@ -658,26 +763,1304 @@ export async function fetchCustomMedia(): Promise<{
   }
 }
 
+export type MediaUploadStage =
+  | 'validation'
+  | 'firebase_storage'
+  | 'server_upload'
+  | 'complete';
+
+export interface MediaUploadDiagnosticEvent {
+  id: string;
+  timestamp: number;
+  stage: MediaUploadStage;
+  status: 'info' | 'warning' | 'error' | 'success';
+  code: string;
+  message: string;
+  fileName: string;
+  fileSizeBytes: number;
+  fileSizeMb: string;
+  mimeType: string;
+  detectedExt: string;
+  httpStatus?: number;
+  firebaseCode?: string;
+  hasAdminPin?: boolean;
+  firebaseAdminActive?: boolean;
+  targetUrl?: string;
+}
+
+export interface VideoMediaValidationResult {
+  valid: boolean;
+  code: string;
+  error?: string;
+  fileName: string;
+  fileSizeBytes: number;
+  fileSizeMb: string;
+  mimeType: string;
+  detectedExt: string;
+  safeMimeType: string;
+}
+
+const MAX_VIDEO_UPLOAD_BYTES = 60 * 1024 * 1024;
+const SUPPORTED_VIDEO_EXTS = new Set([
+  'mp4',
+  'webm',
+  'ogg',
+  'ogv',
+  'mov',
+  'm4v',
+  'mkv',
+  '3gp',
+  'avi',
+  'ts'
+]);
+const VIDEO_MIME_TO_EXT: Record<string, string> = {
+  'video/mp4': 'mp4',
+  'application/mp4': 'mp4',
+  'video/webm': 'webm',
+  'video/ogg': 'ogg',
+  'application/ogg': 'ogg',
+  'video/quicktime': 'mov',
+  'video/x-m4v': 'm4v',
+  'video/x-matroska': 'mkv',
+  'video/3gpp': '3gp',
+  'video/3gpp2': '3gp',
+  'video/x-msvideo': 'avi',
+  'video/avi': 'avi',
+  'video/msvideo': 'avi',
+  'video/mp2t': 'ts'
+};
+
+type MediaDiagnosticListener = (
+  latest: MediaUploadDiagnosticEvent,
+  history: MediaUploadDiagnosticEvent[]
+) => void;
+
+const mediaDiagnosticHistory: MediaUploadDiagnosticEvent[] = [];
+const mediaDiagnosticListeners = new Set<MediaDiagnosticListener>();
+
+export function getRecentMediaUploadDiagnostics(): MediaUploadDiagnosticEvent[] {
+  return [...mediaDiagnosticHistory];
+}
+
+export function clearMediaUploadDiagnostics(): void {
+  mediaDiagnosticHistory.length = 0;
+}
+
+export function subscribeMediaUploadDiagnostics(listener: MediaDiagnosticListener): () => void {
+  mediaDiagnosticListeners.add(listener);
+  return () => {
+    mediaDiagnosticListeners.delete(listener);
+  };
+}
+
+export function emitMediaUploadDiagnostic(
+  input: Omit<MediaUploadDiagnosticEvent, 'id' | 'timestamp'>,
+  options?: { skipUploadHistory?: boolean }
+): MediaUploadDiagnosticEvent {
+  const event: MediaUploadDiagnosticEvent = {
+    ...input,
+    id: `mu_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+    timestamp: Date.now()
+  };
+
+  mediaDiagnosticHistory.unshift(event);
+  if (mediaDiagnosticHistory.length > 25) {
+    mediaDiagnosticHistory.length = 25;
+  }
+
+  const logPayload = {
+    stage: event.stage,
+    code: event.code,
+    fileName: event.fileName,
+    sizeMb: event.fileSizeMb,
+    sizeBytes: event.fileSizeBytes,
+    mimeType: event.mimeType || 'none',
+    ext: event.detectedExt || 'unknown',
+    httpStatus: event.httpStatus,
+    firebaseCode: event.firebaseCode,
+    hasAdminPin: event.hasAdminPin,
+    firebaseAdminActive: event.firebaseAdminActive
+  };
+
+  if (event.status === 'error') {
+    console.error(`[MediaUpload] ${event.message}`, logPayload);
+    if (!options?.skipUploadHistory) {
+      const source: FailedUploadSource = event.firebaseCode
+        ? 'firebase'
+        : event.stage === 'validation'
+        ? 'client'
+        : event.httpStatus && event.httpStatus >= 400
+        ? 'server'
+        : 'network';
+      recordFailedUploadHistory({
+        timestamp: event.timestamp,
+        fileName: event.fileName || 'unknown',
+        fileSizeBytes: event.fileSizeBytes || 0,
+        fileSizeMb: event.fileSizeMb || '0.00',
+        mediaKind: 'tv_video',
+        errorCode: event.firebaseCode || event.code || 'UPLOAD_ERROR',
+        httpStatus: event.httpStatus,
+        firebaseCode: event.firebaseCode,
+        source,
+        message: event.message
+      });
+    }
+  } else if (event.status === 'warning') {
+    console.warn(`[MediaUpload] ${event.message}`, logPayload);
+  } else {
+    console.info(`[MediaUpload] ${event.message}`, logPayload);
+  }
+
+  const snapshot = [...mediaDiagnosticHistory];
+  mediaDiagnosticListeners.forEach((listener) => {
+    try {
+      listener(event, snapshot);
+    } catch {}
+  });
+
+  return event;
+}
+
+export function validateVideoMediaFile(
+  file: Blob | null | undefined,
+  fileName?: string
+): VideoMediaValidationResult {
+  const resolvedName =
+    (fileName && fileName.trim()) ||
+    (file instanceof File && file.name ? file.name.trim() : '') ||
+    'video_clip';
+  const sizeBytes = file && typeof file.size === 'number' ? file.size : 0;
+  const sizeMb = (sizeBytes / (1024 * 1024)).toFixed(2);
+  const rawType = (file?.type || '').split(';')[0].trim().toLowerCase();
+  const extMatch = resolvedName.toLowerCase().match(/\.([a-z0-9]{1,8})$/);
+  const rawExt = extMatch ? extMatch[1] : '';
+  const normalizedExt = rawExt === 'ogv' ? 'ogg' : rawExt;
+
+  if (!file || sizeBytes <= 0) {
+    return {
+      valid: false,
+      code: 'EMPTY_FILE',
+      error: `Selected video file "${resolvedName}" is empty (0 bytes).`,
+      fileName: resolvedName,
+      fileSizeBytes: sizeBytes,
+      fileSizeMb: sizeMb,
+      mimeType: rawType,
+      detectedExt: normalizedExt,
+      safeMimeType: rawType || 'application/octet-stream'
+    };
+  }
+
+  if (sizeBytes > MAX_VIDEO_UPLOAD_BYTES) {
+    return {
+      valid: false,
+      code: 'FILE_TOO_LARGE',
+      error: `Video file "${resolvedName}" (${sizeMb} MB) exceeds the 60.00 MB upload limit.`,
+      fileName: resolvedName,
+      fileSizeBytes: sizeBytes,
+      fileSizeMb: sizeMb,
+      mimeType: rawType,
+      detectedExt: normalizedExt,
+      safeMimeType: rawType || 'application/octet-stream'
+    };
+  }
+
+  const mimeExt = VIDEO_MIME_TO_EXT[rawType] || '';
+  const hasSupportedExt = SUPPORTED_VIDEO_EXTS.has(normalizedExt);
+  const isVideoMime = rawType.startsWith('video/');
+  const isGenericBinaryMime =
+    rawType === '' ||
+    rawType === 'application/octet-stream' ||
+    rawType === 'application/mp4' ||
+    rawType === 'application/ogg';
+
+  if (rawType && !isVideoMime && !isGenericBinaryMime) {
+    return {
+      valid: false,
+      code: 'UNSUPPORTED_MIME_TYPE',
+      error: `Unsupported file MIME type "${rawType}" for "${resolvedName}". Please select a video file (MP4, WebM, MOV, MKV, OGG, M4V, 3GP, AVI, or TS).`,
+      fileName: resolvedName,
+      fileSizeBytes: sizeBytes,
+      fileSizeMb: sizeMb,
+      mimeType: rawType,
+      detectedExt: normalizedExt || mimeExt,
+      safeMimeType: rawType
+    };
+  }
+
+  if (normalizedExt && !hasSupportedExt && !isVideoMime) {
+    return {
+      valid: false,
+      code: 'UNSUPPORTED_FORMAT',
+      error: `Unsupported video extension ".${normalizedExt}" on "${resolvedName}". Supported formats: MP4, WebM, MOV, MKV, OGG, M4V, 3GP, AVI, TS.`,
+      fileName: resolvedName,
+      fileSizeBytes: sizeBytes,
+      fileSizeMb: sizeMb,
+      mimeType: rawType,
+      detectedExt: normalizedExt,
+      safeMimeType: rawType || 'application/octet-stream'
+    };
+  }
+
+  if (!hasSupportedExt && !isVideoMime && !mimeExt) {
+    return {
+      valid: false,
+      code: 'UNSUPPORTED_FORMAT',
+      error: `Could not verify video format for "${resolvedName}" (MIME: "${rawType || 'none'}"). Please use MP4, WebM, MOV, or MKV.`,
+      fileName: resolvedName,
+      fileSizeBytes: sizeBytes,
+      fileSizeMb: sizeMb,
+      mimeType: rawType,
+      detectedExt: normalizedExt,
+      safeMimeType: rawType || 'application/octet-stream'
+    };
+  }
+
+  const detectedExt = mimeExt || (hasSupportedExt ? normalizedExt : 'mp4');
+  const safeMimeType = isVideoMime
+    ? rawType
+    : detectedExt === 'mov'
+    ? 'video/quicktime'
+    : detectedExt === 'mkv'
+    ? 'video/x-matroska'
+    : detectedExt === 'avi'
+    ? 'video/x-msvideo'
+    : detectedExt === 'ts'
+    ? 'video/mp2t'
+    : `video/${detectedExt}`;
+
+  return {
+    valid: true,
+    code: 'VALID_VIDEO',
+    fileName: resolvedName,
+    fileSizeBytes: sizeBytes,
+    fileSizeMb: sizeMb,
+    mimeType: rawType,
+    detectedExt,
+    safeMimeType
+  };
+}
+
+export type MediaNetworkLifecyclePhase =
+  | 'queued'
+  | 'request_init'
+  | 'uploading'
+  | 'awaiting_response'
+  | 'completed'
+  | 'failed';
+
+export interface MediaNetworkRequestLog {
+  id: string;
+  startedAt: number;
+  endedAt?: number;
+  durationMs?: number;
+  transport: 'xhr' | 'fetch';
+  method: string;
+  url: string;
+  mediaKind: 'tv_video' | 'audio' | 'image' | 'apk';
+  fileName: string;
+  fileSizeBytes: number;
+  fileSizeMb: string;
+  phase: MediaNetworkLifecyclePhase;
+  progressPct: number;
+  requestHeaders: Record<string, string>;
+  httpStatus?: number;
+  httpStatusText?: string;
+  responseHeaders?: Record<string, string>;
+  responseBody?: string;
+  serverErrorMessage?: string;
+  serverErrorCode?: string;
+  networkError?: string;
+  preFlightBlocked?: boolean;
+  ok: boolean;
+}
+
+type MediaNetworkLogListener = (
+  logs: MediaNetworkRequestLog[],
+  latest: MediaNetworkRequestLog | null
+) => void;
+
+const mediaNetworkLogs: MediaNetworkRequestLog[] = [];
+const mediaNetworkListeners = new Set<MediaNetworkLogListener>();
+
+function createMediaNetworkLogId(): string {
+  return `net_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function maskSensitiveHeaders(headers: Record<string, string>): Record<string, string> {
+  const masked: Record<string, string> = {};
+  for (const [key, val] of Object.entries(headers)) {
+    if (key.toLowerCase() === 'x-admin-pin') {
+      const trimmed = (val || '').trim();
+      masked[key] = trimmed ? `•••• (present, ${trimmed.length} chars)` : '(missing)';
+    } else {
+      masked[key] = val;
+    }
+  }
+  return masked;
+}
+
+function parseRawResponseHeaders(raw: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  if (!raw) return result;
+  for (const line of raw.trim().split(/[\r\n]+/)) {
+    const colonIdx = line.indexOf(':');
+    if (colonIdx > 0) {
+      const k = line.slice(0, colonIdx).trim().toLowerCase();
+      const v = line.slice(colonIdx + 1).trim();
+      result[k] = v;
+    }
+  }
+  return result;
+}
+
+function headersToRecord(headers: Headers): Record<string, string> {
+  const result: Record<string, string> = {};
+  headers.forEach((v, k) => {
+    result[k.toLowerCase()] = v;
+  });
+  return result;
+}
+
+function notifyMediaNetworkListeners(latest: MediaNetworkRequestLog | null) {
+  const snapshot = [...mediaNetworkLogs];
+  mediaNetworkListeners.forEach((listener) => {
+    try {
+      listener(snapshot, latest);
+    } catch {}
+  });
+}
+
+export type FailedUploadSource = 'server' | 'network' | 'client' | 'firebase';
+
+export interface FailedUploadHistoryEntry {
+  id: string;
+  sourceLogId?: string;
+  timestamp: number;
+  fileName: string;
+  fileSizeBytes: number;
+  fileSizeMb: string;
+  mediaKind: MediaNetworkRequestLog['mediaKind'];
+  errorCode: string;
+  httpStatus?: number;
+  httpStatusText?: string;
+  firebaseCode?: string;
+  source: FailedUploadSource;
+  endpoint?: string;
+  message: string;
+  responseSnippet?: string;
+}
+
+const FAILED_UPLOAD_HISTORY_STORAGE_KEY = 'studio_failed_upload_history_v1';
+const MAX_FAILED_UPLOAD_HISTORY = 10;
+
+type FailedUploadHistoryListener = (entries: FailedUploadHistoryEntry[]) => void;
+const failedUploadHistoryListeners = new Set<FailedUploadHistoryListener>();
+
+function loadInitialFailedUploadHistory(): FailedUploadHistoryEntry[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(FAILED_UPLOAD_HISTORY_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (item): item is FailedUploadHistoryEntry =>
+          Boolean(item) &&
+          typeof item.id === 'string' &&
+          typeof item.timestamp === 'number' &&
+          typeof item.errorCode === 'string' &&
+          typeof item.message === 'string'
+      )
+      .slice(0, MAX_FAILED_UPLOAD_HISTORY);
+  } catch {
+    return [];
+  }
+}
+
+const failedUploadHistory: FailedUploadHistoryEntry[] = loadInitialFailedUploadHistory();
+
+function persistFailedUploadHistory(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(
+      FAILED_UPLOAD_HISTORY_STORAGE_KEY,
+      JSON.stringify(failedUploadHistory.slice(0, MAX_FAILED_UPLOAD_HISTORY))
+    );
+  } catch {}
+}
+
+function notifyFailedUploadHistoryListeners(): void {
+  const snapshot = [...failedUploadHistory];
+  failedUploadHistoryListeners.forEach((listener) => {
+    try {
+      listener(snapshot);
+    } catch {}
+  });
+}
+
+export function recordFailedUploadHistory(
+  input: Omit<FailedUploadHistoryEntry, 'id'>
+): FailedUploadHistoryEntry {
+  const normalizedCode = (input.errorCode || 'UPLOAD_ERROR').trim() || 'UPLOAD_ERROR';
+  const nextEntry: FailedUploadHistoryEntry = {
+    ...input,
+    id: `fuh_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+    errorCode: normalizedCode,
+    message: (input.message || 'Upload failed').slice(0, 500),
+    responseSnippet: input.responseSnippet ? input.responseSnippet.slice(0, 1200) : undefined
+  };
+
+  if (input.sourceLogId) {
+    const existingIdx = failedUploadHistory.findIndex(
+      (item) => item.sourceLogId === input.sourceLogId
+    );
+    if (existingIdx >= 0) {
+      failedUploadHistory[existingIdx] = {
+        ...nextEntry,
+        id: failedUploadHistory[existingIdx].id
+      };
+      persistFailedUploadHistory();
+      notifyFailedUploadHistoryListeners();
+      return failedUploadHistory[existingIdx];
+    }
+  }
+
+  failedUploadHistory.unshift(nextEntry);
+  if (failedUploadHistory.length > MAX_FAILED_UPLOAD_HISTORY) {
+    failedUploadHistory.length = MAX_FAILED_UPLOAD_HISTORY;
+  }
+  persistFailedUploadHistory();
+  notifyFailedUploadHistoryListeners();
+  return nextEntry;
+}
+
+export function getFailedUploadHistory(): FailedUploadHistoryEntry[] {
+  return [...failedUploadHistory];
+}
+
+export function clearFailedUploadHistory(): void {
+  failedUploadHistory.length = 0;
+  persistFailedUploadHistory();
+  notifyFailedUploadHistoryListeners();
+}
+
+export function subscribeFailedUploadHistory(
+  listener: FailedUploadHistoryListener
+): () => void {
+  failedUploadHistoryListeners.add(listener);
+  return () => {
+    failedUploadHistoryListeners.delete(listener);
+  };
+}
+
+function classifyNetworkFailureSource(entry: MediaNetworkRequestLog): FailedUploadSource {
+  if (entry.preFlightBlocked) return 'client';
+  const code = (entry.serverErrorCode || '').toUpperCase();
+  if (
+    code === 'XHR_NETWORK_ERROR' ||
+    code === 'XHR_ABORTED' ||
+    code === 'XHR_TIMEOUT' ||
+    code === 'FETCH_NETWORK_ERROR' ||
+    !entry.httpStatus ||
+    entry.httpStatus <= 0
+  ) {
+    return 'network';
+  }
+  return 'server';
+}
+
+function upsertMediaNetworkLog(entry: MediaNetworkRequestLog): void {
+  const idx = mediaNetworkLogs.findIndex((item) => item.id === entry.id);
+  if (idx >= 0) {
+    mediaNetworkLogs[idx] = entry;
+  } else {
+    mediaNetworkLogs.unshift(entry);
+    if (mediaNetworkLogs.length > 40) {
+      mediaNetworkLogs.length = 40;
+    }
+  }
+
+  if (entry.phase === 'failed') {
+    const fallbackCode =
+      entry.httpStatus && entry.httpStatus > 0 ? `HTTP_${entry.httpStatus}` : 'NETWORK_ERROR';
+    recordFailedUploadHistory({
+      sourceLogId: entry.id,
+      timestamp: entry.endedAt || entry.startedAt || Date.now(),
+      fileName: entry.fileName || 'unknown',
+      fileSizeBytes: entry.fileSizeBytes || 0,
+      fileSizeMb: entry.fileSizeMb || '0.00',
+      mediaKind: entry.mediaKind,
+      errorCode: entry.serverErrorCode || fallbackCode,
+      httpStatus: entry.httpStatus,
+      httpStatusText: entry.httpStatusText,
+      source: classifyNetworkFailureSource(entry),
+      endpoint: entry.url,
+      message:
+        entry.serverErrorMessage ||
+        entry.networkError ||
+        entry.httpStatusText ||
+        'Media upload failed',
+      responseSnippet: entry.responseBody
+    });
+  }
+
+  notifyMediaNetworkListeners(entry);
+}
+
+export function getMediaNetworkLogs(): MediaNetworkRequestLog[] {
+  return [...mediaNetworkLogs];
+}
+
+export function clearMediaNetworkLogs(): void {
+  mediaNetworkLogs.length = 0;
+  notifyMediaNetworkListeners(null);
+}
+
+export function subscribeMediaNetworkLogs(listener: MediaNetworkLogListener): () => void {
+  mediaNetworkListeners.add(listener);
+  return () => {
+    mediaNetworkListeners.delete(listener);
+  };
+}
+
+function recordMediaNetworkPreFlightError(opts: {
+  url: string;
+  mediaKind: MediaNetworkRequestLog['mediaKind'];
+  fileName: string;
+  fileSizeBytes: number;
+  fileSizeMb: string;
+  headers: Record<string, string>;
+  code: string;
+  error: string;
+}) {
+  const now = Date.now();
+  upsertMediaNetworkLog({
+    id: createMediaNetworkLogId(),
+    startedAt: now,
+    endedAt: now,
+    durationMs: 0,
+    transport: 'xhr',
+    method: 'POST',
+    url: opts.url,
+    mediaKind: opts.mediaKind,
+    fileName: opts.fileName,
+    fileSizeBytes: opts.fileSizeBytes,
+    fileSizeMb: opts.fileSizeMb,
+    phase: 'failed',
+    progressPct: 0,
+    requestHeaders: maskSensitiveHeaders(opts.headers),
+    httpStatusText: 'Blocked Pre-Flight (Client Validation)',
+    responseBody: JSON.stringify(
+      {
+        clientValidationRejected: true,
+        code: opts.code,
+        error: opts.error
+      },
+      null,
+      2
+    ),
+    serverErrorCode: opts.code,
+    serverErrorMessage: opts.error,
+    networkError: opts.error,
+    preFlightBlocked: true,
+    ok: false
+  });
+}
+
+const TV_MEDIA_CHUNK_BYTES = 4 * 1024 * 1024;
+
+function monitoredXhrUpload(opts: {
+  url: string;
+  mediaKind: MediaNetworkRequestLog['mediaKind'];
+  file: Blob;
+  fileName: string;
+  headers: Record<string, string>;
+  timeoutMs?: number;
+  stallTimeoutMs?: number;
+  onProgress?: (pct: number, phase: MediaNetworkLifecyclePhase) => void;
+}): Promise<{
+  status: number;
+  statusText: string;
+  responseText: string;
+  json: any;
+  responseHeaders: Record<string, string>;
+}> {
+  return new Promise((resolve, reject) => {
+    const logId = createMediaNetworkLogId();
+    const startedAt = Date.now();
+    const sizeBytes = opts.file?.size || 0;
+    const sizeMb = (sizeBytes / (1024 * 1024)).toFixed(2);
+    const maskedReqHeaders = maskSensitiveHeaders(opts.headers);
+    const effectiveTimeoutMs =
+      opts.timeoutMs ??
+      Math.max(600_000, Math.min(1_800_000, Math.ceil((sizeBytes / (40 * 1024)) * 1000)));
+    const stallTimeoutMs = opts.stallTimeoutMs ?? 90_000;
+
+    const emitUpdate = (patch: Partial<MediaNetworkRequestLog>) => {
+      const existing = mediaNetworkLogs.find((item) => item.id === logId);
+      const base: MediaNetworkRequestLog = existing || {
+        id: logId,
+        startedAt,
+        transport: 'xhr',
+        method: 'POST',
+        url: opts.url,
+        mediaKind: opts.mediaKind,
+        fileName: opts.fileName,
+        fileSizeBytes: sizeBytes,
+        fileSizeMb: sizeMb,
+        phase: 'queued',
+        progressPct: 0,
+        requestHeaders: maskedReqHeaders,
+        ok: false
+      };
+      upsertMediaNetworkLog({ ...base, ...patch });
+    };
+
+    emitUpdate({ phase: 'queued', progressPct: 0 });
+    opts.onProgress?.(0, 'queued');
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', opts.url, true);
+    xhr.timeout = effectiveTimeoutMs;
+    for (const [k, v] of Object.entries(opts.headers)) {
+      xhr.setRequestHeader(k, v);
+    }
+
+    let settled = false;
+    let stalledOut = false;
+    let lastLoadedBytes = -1;
+    let stallTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const clearStallTimer = () => {
+      if (stallTimer) {
+        clearTimeout(stallTimer);
+        stallTimer = null;
+      }
+    };
+
+    const resetStallTimer = (durationMs = stallTimeoutMs) => {
+      clearStallTimer();
+      stallTimer = setTimeout(() => {
+        if (settled) return;
+        stalledOut = true;
+        try {
+          xhr.abort();
+        } catch {}
+      }, durationMs);
+    };
+
+    emitUpdate({ phase: 'request_init', progressPct: 0 });
+    opts.onProgress?.(2, 'request_init');
+
+    let lastReportedPct = -1;
+    xhr.upload.onloadstart = () => {
+      lastReportedPct = 0;
+      lastLoadedBytes = 0;
+      resetStallTimer(stallTimeoutMs);
+      emitUpdate({ phase: 'uploading', progressPct: 0 });
+      opts.onProgress?.(3, 'uploading');
+    };
+
+    xhr.upload.onprogress = (ev: ProgressEvent<EventTarget>) => {
+      if (ev.loaded > lastLoadedBytes) {
+        lastLoadedBytes = ev.loaded;
+        resetStallTimer(stallTimeoutMs);
+      }
+      if (ev.lengthComputable && ev.total > 0) {
+        const pct = Math.min(99, Math.round((ev.loaded / ev.total) * 100));
+        opts.onProgress?.(pct, 'uploading');
+        if (pct !== lastReportedPct && (pct - lastReportedPct >= 5 || pct >= 99)) {
+          lastReportedPct = pct;
+          emitUpdate({ phase: 'uploading', progressPct: pct });
+        }
+      }
+    };
+
+    xhr.upload.onload = () => {
+      resetStallTimer(Math.max(stallTimeoutMs, 120_000));
+      emitUpdate({ phase: 'awaiting_response', progressPct: 100 });
+      opts.onProgress?.(99, 'awaiting_response');
+    };
+
+    xhr.onload = () => {
+      settled = true;
+      clearStallTimer();
+      const endedAt = Date.now();
+      const responseText = xhr.responseText || '';
+      const responseHeaders = parseRawResponseHeaders(xhr.getAllResponseHeaders());
+      let json: any = {};
+      try {
+        json = responseText ? JSON.parse(responseText) : {};
+      } catch {
+        json = { error: responseText.slice(0, 300) || `HTTP ${xhr.status}` };
+      }
+
+      const ok = xhr.status >= 200 && xhr.status < 300 && Boolean(json?.url || json?.success);
+      const serverErrorMessage = !ok
+        ? json?.error || json?.message || `HTTP ${xhr.status} ${xhr.statusText || ''}`.trim()
+        : undefined;
+      const serverErrorCode = !ok
+        ? xhr.status === 401
+          ? 'INVALID_ADMIN_PIN'
+          : json?.code || `HTTP_${xhr.status}`
+        : undefined;
+
+      emitUpdate({
+        phase: ok ? 'completed' : 'failed',
+        endedAt,
+        durationMs: endedAt - startedAt,
+        progressPct: 100,
+        httpStatus: xhr.status,
+        httpStatusText: xhr.statusText || (ok ? 'OK' : 'Error'),
+        responseHeaders,
+        responseBody: responseText.slice(0, 8000),
+        serverErrorMessage,
+        serverErrorCode,
+        ok
+      });
+
+      resolve({
+        status: xhr.status,
+        statusText: xhr.statusText,
+        responseText,
+        json,
+        responseHeaders
+      });
+    };
+
+    xhr.onerror = () => {
+      settled = true;
+      clearStallTimer();
+      const endedAt = Date.now();
+      const errMsg = `Network connection error while uploading "${opts.fileName}" (${sizeMb} MB).`;
+      emitUpdate({
+        phase: 'failed',
+        endedAt,
+        durationMs: endedAt - startedAt,
+        httpStatus: xhr.status || 0,
+        httpStatusText: xhr.statusText || 'Network Error',
+        responseBody: (xhr.responseText || '').slice(0, 8000),
+        networkError: errMsg,
+        serverErrorMessage: errMsg,
+        serverErrorCode: 'XHR_NETWORK_ERROR',
+        ok: false
+      });
+      reject(new Error(errMsg));
+    };
+
+    xhr.onabort = () => {
+      settled = true;
+      clearStallTimer();
+      const endedAt = Date.now();
+      const errMsg = stalledOut
+        ? `Upload stalled with no progress for ${Math.round(stallTimeoutMs / 1000)}s while sending "${opts.fileName}" (${sizeMb} MB).`
+        : `Upload aborted for "${opts.fileName}".`;
+      emitUpdate({
+        phase: 'failed',
+        endedAt,
+        durationMs: endedAt - startedAt,
+        httpStatus: stalledOut ? 408 : xhr.status || 0,
+        httpStatusText: stalledOut ? 'Upload Stalled' : 'Aborted',
+        networkError: errMsg,
+        serverErrorMessage: errMsg,
+        serverErrorCode: stalledOut ? 'XHR_STALL_TIMEOUT' : 'XHR_ABORTED',
+        ok: false
+      });
+      reject(new Error(errMsg));
+    };
+
+    xhr.ontimeout = () => {
+      settled = true;
+      clearStallTimer();
+      const endedAt = Date.now();
+      const errMsg = `Upload timed out after ${Math.round(effectiveTimeoutMs / 1000)}s for "${opts.fileName}".`;
+      emitUpdate({
+        phase: 'failed',
+        endedAt,
+        durationMs: endedAt - startedAt,
+        httpStatus: 408,
+        httpStatusText: 'Request Timeout',
+        networkError: errMsg,
+        serverErrorMessage: errMsg,
+        serverErrorCode: 'XHR_TIMEOUT',
+        ok: false
+      });
+      reject(new Error(errMsg));
+    };
+
+    resetStallTimer(stallTimeoutMs);
+    xhr.send(opts.file);
+  });
+}
+
+function sendRawChunkXhr(opts: {
+  url: string;
+  chunk: Blob;
+  headers: Record<string, string>;
+  timeoutMs?: number;
+  stallTimeoutMs?: number;
+  onChunkProgress?: (loadedBytes: number) => void;
+}): Promise<{
+  status: number;
+  statusText: string;
+  responseText: string;
+  json: any;
+  responseHeaders: Record<string, string>;
+}> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const timeoutMs = opts.timeoutMs ?? 180_000;
+    const stallMs = opts.stallTimeoutMs ?? 90_000;
+    xhr.open('POST', opts.url, true);
+    xhr.timeout = timeoutMs;
+    for (const [k, v] of Object.entries(opts.headers)) {
+      xhr.setRequestHeader(k, v);
+    }
+
+    let settled = false;
+    let stalledOut = false;
+    let lastLoaded = -1;
+    let stallTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const clearStall = () => {
+      if (stallTimer) {
+        clearTimeout(stallTimer);
+        stallTimer = null;
+      }
+    };
+
+    const resetStall = (ms = stallMs) => {
+      clearStall();
+      stallTimer = setTimeout(() => {
+        if (settled) return;
+        stalledOut = true;
+        try {
+          xhr.abort();
+        } catch {}
+      }, ms);
+    };
+
+    xhr.upload.onprogress = (ev: ProgressEvent<EventTarget>) => {
+      if (ev.loaded > lastLoaded) {
+        lastLoaded = ev.loaded;
+        resetStall(stallMs);
+        opts.onChunkProgress?.(ev.loaded);
+      }
+    };
+
+    xhr.upload.onload = () => {
+      resetStall(Math.max(stallMs, 120_000));
+      opts.onChunkProgress?.(opts.chunk.size);
+    };
+
+    xhr.onload = () => {
+      settled = true;
+      clearStall();
+      const responseText = xhr.responseText || '';
+      const responseHeaders = parseRawResponseHeaders(xhr.getAllResponseHeaders());
+      let json: any = {};
+      try {
+        json = responseText ? JSON.parse(responseText) : {};
+      } catch {
+        json = { error: responseText.slice(0, 300) || `HTTP ${xhr.status}` };
+      }
+      resolve({
+        status: xhr.status,
+        statusText: xhr.statusText,
+        responseText,
+        json,
+        responseHeaders
+      });
+    };
+
+    xhr.onerror = () => {
+      settled = true;
+      clearStall();
+      reject(new Error('Network connection error while uploading media chunk.'));
+    };
+
+    xhr.onabort = () => {
+      settled = true;
+      clearStall();
+      reject(
+        new Error(
+          stalledOut
+            ? `Chunk upload stalled with no progress for ${Math.round(stallMs / 1000)}s.`
+            : 'Chunk upload aborted.'
+        )
+      );
+    };
+
+    xhr.ontimeout = () => {
+      settled = true;
+      clearStall();
+      reject(new Error(`Chunk upload timed out after ${Math.round(timeoutMs / 1000)}s.`));
+    };
+
+    resetStall(stallMs);
+    xhr.send(opts.chunk);
+  });
+}
+
+async function monitoredChunkedXhrUpload(opts: {
+  url: string;
+  mediaKind: MediaNetworkRequestLog['mediaKind'];
+  file: Blob;
+  fileName: string;
+  headers: Record<string, string>;
+  onProgress?: (pct: number, phase: MediaNetworkLifecyclePhase) => void;
+}): Promise<{
+  status: number;
+  statusText: string;
+  responseText: string;
+  json: any;
+  responseHeaders: Record<string, string>;
+}> {
+  const logId = createMediaNetworkLogId();
+  const startedAt = Date.now();
+  const sizeBytes = opts.file?.size || 0;
+  const sizeMb = (sizeBytes / (1024 * 1024)).toFixed(2);
+  const totalChunks = Math.max(1, Math.ceil(sizeBytes / TV_MEDIA_CHUNK_BYTES));
+  const uploadId = `tv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  const maskedReqHeaders = maskSensitiveHeaders({
+    ...opts.headers,
+    'x-upload-id': uploadId,
+    'x-total-chunks': String(totalChunks)
+  });
+
+  const emitUpdate = (patch: Partial<MediaNetworkRequestLog>) => {
+    const existing = mediaNetworkLogs.find((item) => item.id === logId);
+    const base: MediaNetworkRequestLog = existing || {
+      id: logId,
+      startedAt,
+      transport: 'xhr',
+      method: 'POST',
+      url: opts.url,
+      mediaKind: opts.mediaKind,
+      fileName: opts.fileName,
+      fileSizeBytes: sizeBytes,
+      fileSizeMb: sizeMb,
+      phase: 'queued',
+      progressPct: 0,
+      requestHeaders: maskedReqHeaders,
+      ok: false
+    };
+    upsertMediaNetworkLog({ ...base, ...patch });
+  };
+
+  emitUpdate({ phase: 'queued', progressPct: 0 });
+  opts.onProgress?.(0, 'queued');
+  emitUpdate({ phase: 'request_init', progressPct: 2 });
+  opts.onProgress?.(2, 'request_init');
+
+  let lastLoggedPct = 0;
+  let lastRes: {
+    status: number;
+    statusText: string;
+    responseText: string;
+    json: any;
+    responseHeaders: Record<string, string>;
+  } | null = null;
+
+  for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex += 1) {
+    const startByte = chunkIndex * TV_MEDIA_CHUNK_BYTES;
+    const endByte = Math.min(sizeBytes, startByte + TV_MEDIA_CHUNK_BYTES);
+    const chunkBlob = opts.file.slice(startByte, endByte);
+
+    let chunkRes: {
+      status: number;
+      statusText: string;
+      responseText: string;
+      json: any;
+      responseHeaders: Record<string, string>;
+    };
+
+    try {
+      chunkRes = await sendRawChunkXhr({
+        url: opts.url,
+        chunk: chunkBlob,
+        headers: {
+          ...opts.headers,
+          'x-upload-id': uploadId,
+          'x-chunk-index': String(chunkIndex),
+          'x-total-chunks': String(totalChunks)
+        },
+        onChunkProgress: (loadedInChunk) => {
+          const uploadedTotal = Math.min(sizeBytes, startByte + loadedInChunk);
+          const pct = Math.min(99, Math.max(3, Math.round((uploadedTotal / sizeBytes) * 100)));
+          const phase: MediaNetworkLifecyclePhase =
+            chunkIndex === totalChunks - 1 && loadedInChunk >= chunkBlob.size
+              ? 'awaiting_response'
+              : 'uploading';
+          opts.onProgress?.(pct, phase);
+          if (pct - lastLoggedPct >= 4 || phase === 'awaiting_response') {
+            lastLoggedPct = pct;
+            emitUpdate({ phase, progressPct: pct });
+          }
+        }
+      });
+    } catch (err: any) {
+      const endedAt = Date.now();
+      const errMsg = `${err?.message || 'Chunk upload failed'} (chunk ${chunkIndex + 1}/${totalChunks}, "${opts.fileName}" ${sizeMb} MB).`;
+      const isTimeout = errMsg.toLowerCase().includes('timed out') || errMsg.toLowerCase().includes('stalled');
+      emitUpdate({
+        phase: 'failed',
+        endedAt,
+        durationMs: endedAt - startedAt,
+        httpStatus: isTimeout ? 408 : 0,
+        httpStatusText: isTimeout ? 'Request Timeout' : 'Network Error',
+        networkError: errMsg,
+        serverErrorMessage: errMsg,
+        serverErrorCode: isTimeout ? 'XHR_TIMEOUT' : 'XHR_NETWORK_ERROR',
+        ok: false
+      });
+      throw new Error(errMsg);
+    }
+
+    lastRes = chunkRes;
+    const isFinalChunk = chunkIndex === totalChunks - 1;
+    const chunkOk =
+      chunkRes.status >= 200 &&
+      chunkRes.status < 300 &&
+      (isFinalChunk ? Boolean(chunkRes.json?.url) : Boolean(chunkRes.json?.success));
+
+    if (!chunkOk) {
+      const endedAt = Date.now();
+      const serverErrorMessage =
+        chunkRes.json?.error ||
+        chunkRes.json?.message ||
+        `HTTP ${chunkRes.status} ${chunkRes.statusText || ''}`.trim();
+      const serverErrorCode =
+        chunkRes.status === 401
+          ? 'INVALID_ADMIN_PIN'
+          : chunkRes.json?.code || `HTTP_${chunkRes.status}`;
+
+      emitUpdate({
+        phase: 'failed',
+        endedAt,
+        durationMs: endedAt - startedAt,
+        progressPct: Math.round(((chunkIndex + 1) / totalChunks) * 100),
+        httpStatus: chunkRes.status,
+        httpStatusText: chunkRes.statusText || 'Error',
+        responseHeaders: chunkRes.responseHeaders,
+        responseBody: chunkRes.responseText.slice(0, 8000),
+        serverErrorMessage,
+        serverErrorCode,
+        ok: false
+      });
+      return chunkRes;
+    }
+  }
+
+  const endedAt = Date.now();
+  const finalRes = lastRes || {
+    status: 500,
+    statusText: 'Error',
+    responseText: '',
+    json: { error: 'No response from final upload chunk' },
+    responseHeaders: {}
+  };
+  emitUpdate({
+    phase: 'completed',
+    endedAt,
+    durationMs: endedAt - startedAt,
+    progressPct: 100,
+    httpStatus: finalRes.status,
+    httpStatusText: finalRes.statusText || 'OK',
+    responseHeaders: finalRes.responseHeaders,
+    responseBody: finalRes.responseText.slice(0, 8000),
+    ok: true
+  });
+  return finalRes;
+}
+
 export async function uploadTvMediaFile(
   file: Blob,
   adminPin: string,
-  fileName?: string
+  fileName?: string,
+  onProgress?: (pct: number, phase: MediaNetworkLifecyclePhase) => void
 ): Promise<{ success: boolean; url: string }> {
-  const resolvedName =
-    fileName || (file instanceof File && file.name ? file.name : 'recorded_clip.webm');
-  const res = await fetch(buildApiUrl('/api/admin/tv-media/upload'), {
-    method: 'POST',
-    headers: {
-      'Content-Type': file.type || 'video/webm',
-      'x-admin-pin': adminPin,
-      'x-file-name': encodeURIComponent(resolvedName)
-    },
-    body: file
-  });
-  const json = await res.json();
-  if (!res.ok || !json.url) {
-    throw new Error(json.error || 'Failed to upload TV media file');
+  const validation = validateVideoMediaFile(file, fileName);
+  const trimmedPin = (adminPin || '').trim();
+  const useChunkedUpload = validation.fileSizeBytes > TV_MEDIA_CHUNK_BYTES;
+  const endpoint = buildApiUrl(
+    useChunkedUpload ? '/api/admin/tv-media/upload-chunk' : '/api/admin/tv-media/upload'
+  );
+  const plannedHeaders: Record<string, string> = {
+    'Content-Type': validation.safeMimeType || 'application/octet-stream',
+    'x-admin-pin': trimmedPin,
+    'x-file-name': encodeURIComponent(validation.fileName)
+  };
+
+  if (!validation.valid) {
+    const errMsg = validation.error || 'Video file failed validation.';
+    recordMediaNetworkPreFlightError({
+      url: endpoint,
+      mediaKind: 'tv_video',
+      fileName: validation.fileName,
+      fileSizeBytes: validation.fileSizeBytes,
+      fileSizeMb: validation.fileSizeMb,
+      headers: plannedHeaders,
+      code: validation.code,
+      error: errMsg
+    });
+    emitMediaUploadDiagnostic(
+      {
+        stage: 'validation',
+        status: 'error',
+        code: validation.code,
+        message: errMsg,
+        fileName: validation.fileName,
+        fileSizeBytes: validation.fileSizeBytes,
+        fileSizeMb: validation.fileSizeMb,
+        mimeType: validation.mimeType,
+        detectedExt: validation.detectedExt,
+        hasAdminPin: Boolean(trimmedPin)
+      },
+      { skipUploadHistory: true }
+    );
+    throw new Error(errMsg);
   }
+
+  if (!trimmedPin) {
+    const msg = 'Admin PIN missing or session locked. Please unlock Admin Panel with your PIN before uploading video.';
+    recordMediaNetworkPreFlightError({
+      url: endpoint,
+      mediaKind: 'tv_video',
+      fileName: validation.fileName,
+      fileSizeBytes: validation.fileSizeBytes,
+      fileSizeMb: validation.fileSizeMb,
+      headers: plannedHeaders,
+      code: 'MISSING_ADMIN_PIN',
+      error: msg
+    });
+    emitMediaUploadDiagnostic(
+      {
+        stage: 'validation',
+        status: 'error',
+        code: 'MISSING_ADMIN_PIN',
+        message: msg,
+        fileName: validation.fileName,
+        fileSizeBytes: validation.fileSizeBytes,
+        fileSizeMb: validation.fileSizeMb,
+        mimeType: validation.safeMimeType,
+        detectedExt: validation.detectedExt,
+        hasAdminPin: false
+      },
+      { skipUploadHistory: true }
+    );
+    throw new Error(msg);
+  }
+
+  emitMediaUploadDiagnostic({
+    stage: 'server_upload',
+    status: 'info',
+    code: 'SERVER_UPLOAD_START',
+    message: useChunkedUpload
+      ? `Uploading "${validation.fileName}" (${validation.fileSizeMb} MB) via 4 MB chunked XHR to Express media endpoint...`
+      : `Uploading "${validation.fileName}" (${validation.fileSizeMb} MB) via monitored XHR to Express media endpoint...`,
+    fileName: validation.fileName,
+    fileSizeBytes: validation.fileSizeBytes,
+    fileSizeMb: validation.fileSizeMb,
+    mimeType: validation.safeMimeType,
+    detectedExt: validation.detectedExt,
+    hasAdminPin: true
+  });
+
+  let xhrRes: {
+    status: number;
+    statusText: string;
+    responseText: string;
+    json: any;
+    responseHeaders: Record<string, string>;
+  };
+  try {
+    xhrRes = useChunkedUpload
+      ? await monitoredChunkedXhrUpload({
+          url: endpoint,
+          mediaKind: 'tv_video',
+          file,
+          fileName: validation.fileName,
+          headers: plannedHeaders,
+          onProgress
+        })
+      : await monitoredXhrUpload({
+          url: endpoint,
+          mediaKind: 'tv_video',
+          file,
+          fileName: validation.fileName,
+          headers: plannedHeaders,
+          onProgress
+        });
+  } catch (networkErr: any) {
+    const msg = networkErr?.message || `Network error while uploading "${validation.fileName}".`;
+    emitMediaUploadDiagnostic(
+      {
+        stage: 'server_upload',
+        status: 'error',
+        code: 'NETWORK_ERROR',
+        message: msg,
+        fileName: validation.fileName,
+        fileSizeBytes: validation.fileSizeBytes,
+        fileSizeMb: validation.fileSizeMb,
+        mimeType: validation.safeMimeType,
+        detectedExt: validation.detectedExt,
+        hasAdminPin: true
+      },
+      { skipUploadHistory: true }
+    );
+    throw new Error(msg);
+  }
+
+  const { status, json } = xhrRes;
+  if (status < 200 || status >= 300 || !json.url) {
+    const serverCode =
+      status === 401
+        ? 'INVALID_ADMIN_PIN'
+        : status === 413
+        ? json?.code || 'FILE_TOO_LARGE'
+        : json?.code || (status === 400 ? 'BAD_MEDIA_PAYLOAD' : 'SERVER_HTTP_ERROR');
+
+    const detailedError =
+      status === 401
+        ? `Server rejected upload (HTTP 401): Invalid or missing Admin PIN. Re-enter Admin PIN and retry.`
+        : json.error || `Server rejected TV media upload (HTTP ${status})`;
+
+    emitMediaUploadDiagnostic(
+      {
+        stage: 'server_upload',
+        status: 'error',
+        code: serverCode,
+        message: detailedError,
+        fileName: validation.fileName,
+        fileSizeBytes: validation.fileSizeBytes,
+        fileSizeMb: validation.fileSizeMb,
+        mimeType: validation.safeMimeType,
+        detectedExt: validation.detectedExt,
+        httpStatus: status,
+        hasAdminPin: true
+      },
+      { skipUploadHistory: true }
+    );
+    throw new Error(detailedError);
+  }
+
+  emitMediaUploadDiagnostic({
+    stage: 'complete',
+    status: 'success',
+    code: 'SERVER_UPLOAD_SUCCESS',
+    message: `Uploaded "${validation.fileName}" (${validation.fileSizeMb} MB) to Express server.`,
+    fileName: validation.fileName,
+    fileSizeBytes: validation.fileSizeBytes,
+    fileSizeMb: validation.fileSizeMb,
+    mimeType: validation.safeMimeType,
+    detectedExt: validation.detectedExt,
+    httpStatus: status,
+    hasAdminPin: true,
+    targetUrl: json.url
+  });
+
   return json;
 }
 
@@ -685,20 +2068,22 @@ export async function uploadAudioFile(
   file: File,
   adminPin: string
 ): Promise<{ success: boolean; url: string }> {
-  const res = await fetch(buildApiUrl('/api/admin/audio/upload'), {
-    method: 'POST',
+  const endpoint = buildApiUrl('/api/admin/audio/upload');
+  const xhrRes = await monitoredXhrUpload({
+    url: endpoint,
+    mediaKind: 'audio',
+    file,
+    fileName: file.name || 'cricket_sfx',
     headers: {
       'Content-Type': file.type || 'application/octet-stream',
       'x-admin-pin': adminPin,
       'x-file-name': encodeURIComponent(file.name || 'cricket_sfx')
-    },
-    body: file
+    }
   });
-  const json = await res.json();
-  if (!res.ok || !json.url) {
-    throw new Error(json.error || 'Failed to upload audio file');
+  if (xhrRes.status < 200 || xhrRes.status >= 300 || !xhrRes.json?.url) {
+    throw new Error(xhrRes.json?.error || `Failed to upload audio file (HTTP ${xhrRes.status})`);
   }
-  return json;
+  return xhrRes.json;
 }
 
 export interface DefaultAudioAssetInfo {
@@ -782,20 +2167,23 @@ export async function uploadApkFile(
   file: File,
   adminPin: string
 ): Promise<{ success: boolean; url: string }> {
-  const res = await fetch(buildApiUrl('/api/admin/apk/upload'), {
-    method: 'POST',
+  const endpoint = buildApiUrl('/api/admin/apk/upload');
+  const xhrRes = await monitoredXhrUpload({
+    url: endpoint,
+    mediaKind: 'apk',
+    file,
+    fileName: file.name || 'live_cricket_app.apk',
     headers: {
       'Content-Type': file.type || 'application/vnd.android.package-archive',
       'x-admin-pin': adminPin,
       'x-file-name': encodeURIComponent(file.name || 'live_cricket_app.apk')
     },
-    body: file
+    timeoutMs: 300_000
   });
-  const json = await res.json();
-  if (!res.ok || !json.url) {
-    throw new Error(json.error || 'Failed to upload APK file');
+  if (xhrRes.status < 200 || xhrRes.status >= 300 || !xhrRes.json?.url) {
+    throw new Error(xhrRes.json?.error || `Failed to upload APK file (HTTP ${xhrRes.status})`);
   }
-  return json;
+  return xhrRes.json;
 }
 
 export async function fetchServerAdminNews(): Promise<{
@@ -1120,9 +2508,15 @@ export function logAppDownloadIntent(payload: AppDownloadIntentPayload): void {
 
 export interface ApkUrlVerifyResult {
   valid: boolean;
+  is200Ok?: boolean;
   status: number;
+  statusText?: string;
+  methodUsed?: 'HEAD' | 'GET_RANGE' | 'LOCAL';
+  latencyMs?: number;
+  contentType?: string;
   finalUrl?: string;
   contentLength?: number;
+  checkedAt?: number;
   error?: string;
 }
 

@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { AppDownloadConfig } from '../../types/cricket';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
 import { buildApiUrl, logAppDownloadIntent } from '../../services/api';
+import { extractApkFilename, sanitizePublicApkUrl } from '../../utils/apkLinks';
 import { Download, Smartphone, Share, X, CheckCircle2, ExternalLink } from 'lucide-react';
 
 interface AppDownloadButtonProps {
@@ -31,15 +32,6 @@ function isInsideAppEnvironment(): boolean {
   return false;
 }
 
-function resolveDownloadUrl(rawUrl?: string): string {
-  const trimmed = (rawUrl || '').trim();
-  if (!trimmed) return '';
-  if (trimmed.startsWith('/')) {
-    return buildApiUrl(trimmed);
-  }
-  return trimmed;
-}
-
 export const AppDownloadButton: React.FC<AppDownloadButtonProps> = ({
   config,
   variant = 'banner',
@@ -52,14 +44,24 @@ export const AppDownloadButton: React.FC<AppDownloadButtonProps> = ({
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
 
   const insideApp = useMemo(() => isInsideAppEnvironment(), []);
+  const isInsideIframe = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return window.self !== window.top;
+    } catch {
+      return true;
+    }
+  }, []);
+
   if (insideApp) return null;
 
   const isEnabled = config?.enabled ?? true;
   if (!isEnabled) return null;
 
-  const apkUrl = resolveDownloadUrl(config?.apkUrl);
+  const apkUrl = sanitizePublicApkUrl(config?.apkUrl, buildApiUrl);
   const version = (config?.version || '').trim();
   const hasApkLink = apkUrl.length > 0;
+  const downloadFilename = hasApkLink ? extractApkFilename(apkUrl, 'live-cricket-app.apk') : 'live-cricket-app.apk';
 
   const trackDownloadIntent = (action: 'apk_download' | 'pwa_install' | 'install_modal') => {
     logAppDownloadIntent({
@@ -128,9 +130,9 @@ export const AppDownloadButton: React.FC<AppDownloadButtonProps> = ({
             {hasApkLink && (
               <a
                 href={apkUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                download
+                target={isInsideIframe ? '_blank' : undefined}
+                rel={isInsideIframe ? 'noopener noreferrer' : undefined}
+                download={downloadFilename}
                 onClick={() => {
                   trackDownloadIntent('apk_download');
                   setIsModalOpen(false);
@@ -217,9 +219,10 @@ export const AppDownloadButton: React.FC<AppDownloadButtonProps> = ({
         <>
           <a
             href={apkUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            download
+            target={isInsideIframe ? '_blank' : undefined}
+            rel={isInsideIframe ? 'noopener noreferrer' : undefined}
+            download={downloadFilename}
+            onClick={() => trackDownloadIntent('apk_download')}
             title={`Download ${siteName} Android App${version ? ` v${version}` : ''}`}
             className={`min-h-[34px] px-2.5 rounded-xl bg-emerald-400 hover:bg-emerald-300 active:scale-95 border border-emerald-200/80 text-slate-950 font-sans font-black text-[10px] sm:text-[11px] flex items-center gap-1 shadow-[0_0_12px_rgba(16,185,129,0.35)] transition shrink-0 ${className}`}
           >
@@ -257,9 +260,10 @@ export const AppDownloadButton: React.FC<AppDownloadButtonProps> = ({
         <>
           <a
             href={apkUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            download
+            target={isInsideIframe ? '_blank' : undefined}
+            rel={isInsideIframe ? 'noopener noreferrer' : undefined}
+            download={downloadFilename}
+            onClick={() => trackDownloadIntent('apk_download')}
             title={`Download ${siteName} Android App${version ? ` v${version}` : ''}`}
             className={`inline-flex items-center gap-1.5 font-sans text-xs sm:text-sm font-black text-slate-950 bg-emerald-400 hover:bg-emerald-300 px-3 py-1.5 rounded-lg border border-emerald-200/80 shadow-[0_0_16px_rgba(16,185,129,0.35)] transition-all shrink-0 ${className}`}
           >
@@ -316,9 +320,9 @@ export const AppDownloadButton: React.FC<AppDownloadButtonProps> = ({
             {hasApkLink ? (
               <a
                 href={apkUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                download
+                target={isInsideIframe ? '_blank' : undefined}
+                rel={isInsideIframe ? 'noopener noreferrer' : undefined}
+                download={downloadFilename}
                 onClick={() => trackDownloadIntent('apk_download')}
                 className="min-h-[36px] px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-slate-950 font-cricket font-bold text-xs flex items-center justify-center gap-1.5 border border-emerald-300/80 shadow-[0_0_14px_rgba(16,185,129,0.3)] transition shrink-0 whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
               >

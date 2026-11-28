@@ -104,9 +104,11 @@ interface ContentContextValue {
   removeBackupBlog: (id: string) => void;
   upsertBackupMediaItem: (m: MediaLibraryItem) => void;
   removeBackupMediaItem: (id: string) => void;
+  removeBackupMediaItemsBatch: (ids: string[]) => void;
   upsertBackupVideoSource: (v: VideoSourceConfig) => void;
   upsertBackupVideoSourcesBatch: (list: VideoSourceConfig[]) => void;
   removeBackupVideoSource: (id: string) => void;
+  removeBackupVideoSourcesBatch: (ids: string[]) => void;
   setBackupMonetization: (cfg: Partial<MonetizationConfig>) => void;
 }
 
@@ -643,6 +645,12 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setMediaLibrary((prev) => prev.filter((x) => x.id !== id));
   }, []);
 
+  const removeBackupMediaItemsBatch = useCallback((ids: string[]) => {
+    if (!Array.isArray(ids) || ids.length === 0) return;
+    const idSet = new Set(ids);
+    setMediaLibrary((prev) => prev.filter((x) => !idSet.has(x.id)));
+  }, []);
+
   const upsertBackupVideoSource = useCallback((v: VideoSourceConfig) => {
     setVideoSources((prev) => {
       const idx = prev.findIndex((x) => x.id === v.id);
@@ -669,6 +677,12 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const removeBackupVideoSource = useCallback((id: string) => {
     setVideoSources((prev) => prev.filter((x) => x.id !== id));
+  }, []);
+
+  const removeBackupVideoSourcesBatch = useCallback((ids: string[]) => {
+    if (!Array.isArray(ids) || ids.length === 0) return;
+    const idSet = new Set(ids);
+    setVideoSources((prev) => prev.filter((x) => !idSet.has(x.id)));
   }, []);
 
   const setBackupMonetization = useCallback((cfg: Partial<MonetizationConfig>) => {
@@ -706,9 +720,11 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
         removeBackupBlog,
         upsertBackupMediaItem,
         removeBackupMediaItem,
+        removeBackupMediaItemsBatch,
         upsertBackupVideoSource,
         upsertBackupVideoSourcesBatch,
         removeBackupVideoSource,
+        removeBackupVideoSourcesBatch,
         setBackupMonetization
       }}
     >

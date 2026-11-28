@@ -11,6 +11,7 @@ import { SponsorBanner } from '../Broadcast/SponsorBanner';
 import { BroadcastScorecardDrawer } from '../Broadcast/BroadcastScorecardDrawer';
 import { AppDownloadButton } from '../Broadcast/AppDownloadButton';
 import { SixProCricketBanner } from '../Broadcast/SixProCricketBanner';
+import { AppInformation } from './AppInformation';
 import { ArticleRenderer } from '../Public/ArticleRenderer';
 import { useContent } from '../../context/ContentContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -683,17 +684,13 @@ export const AndroidAppView: React.FC<AndroidAppViewProps> = ({
                   {mobileSponsorEnabled && (
                     <SponsorBanner sponsor={monetization?.sponsor} compact />
                   )}
-                  <div className="rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 p-3.5 space-y-2 text-xs">
-                    <div className="font-black text-slate-950 dark:text-white text-sm">
-                      {monetization?.siteName || 'Live Cricket HD'}
-                    </div>
-                    {monetization?.contactEmail && (
-                      <div className="text-slate-600 dark:text-slate-400">
-                        Contact:{' '}
-                        <span className="text-sky-700 dark:text-sky-300 font-mono">{monetization.contactEmail}</span>
-                      </div>
-                    )}
-                  </div>
+                  <AppInformation
+                    sixProCricket={sixProCricket}
+                    version={appDownload?.version}
+                    buildTimestamp={monetization?.updatedAt}
+                    siteName={monetization?.siteName}
+                    contactEmail={monetization?.contactEmail}
+                  />
                   <SixProCricketBanner variant="mobile" layout="inline" config={sixProCricket} />
                   {(appDownload?.enabled ?? true) && (
                     <AppDownloadButton

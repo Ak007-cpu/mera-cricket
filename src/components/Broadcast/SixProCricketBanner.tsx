@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { AlertCircle, CheckCircle2, Download, Gamepad2 } from 'lucide-react';
 import { SixProCricketConfig } from '../../types/cricket';
 import { buildApiUrl, logAppDownloadIntent } from '../../services/api';
+import { extractApkFilename, sanitizePublicApkUrl } from '../../utils/apkLinks';
 import bannerArtwork from '../../assets/images/six_pro_cricket_banner_1795611190808.jpg';
 import gameIconArtwork from '../../assets/images/six_pro_cricket_icon_1795611190577.jpg';
 
@@ -10,32 +11,6 @@ interface SixProCricketBannerProps {
   variant?: 'banner' | 'mobile';
   layout?: 'fixed' | 'inline';
   className?: string;
-}
-
-function resolveSixProApkUrl(rawUrl?: string): string {
-  const trimmed = (rawUrl || '').trim();
-  if (!trimmed) return '';
-  if (/^(javascript|vbscript|data):/i.test(trimmed)) return '';
-  if (trimmed.startsWith('/')) {
-    return buildApiUrl(trimmed);
-  }
-  if (/^https?:\/\//i.test(trimmed)) {
-    return trimmed;
-  }
-  return '';
-}
-
-function extractApkFilename(url: string): string {
-  try {
-    const clean = url.split('?')[0].split('#')[0];
-    const base = clean.substring(clean.lastIndexOf('/') + 1);
-    if (base && base.toLowerCase().endsWith('.apk')) {
-      return base;
-    }
-  } catch {
-    // Fallback filename
-  }
-  return 'six-pro-3d-cricket.apk';
 }
 
 export const SixProCricketBanner: React.FC<SixProCricketBannerProps> = ({
@@ -62,10 +37,12 @@ export const SixProCricketBanner: React.FC<SixProCricketBannerProps> = ({
     return null;
   }
 
-  const apkUrl = resolveSixProApkUrl(config?.apkUrl);
+  const apkUrl = sanitizePublicApkUrl(config?.apkUrl, buildApiUrl);
   const hasApkLink = apkUrl.length > 0;
   const sizeLabel = (config?.sizeLabel || '').trim() || '12 MB';
-  const downloadFilename = hasApkLink ? extractApkFilename(apkUrl) : 'six-pro-3d-cricket.apk';
+  const downloadFilename = hasApkLink
+    ? extractApkFilename(apkUrl, 'six-pro-3d-cricket.apk')
+    : 'six-pro-3d-cricket.apk';
 
   const handleDownloadClick = () => {
     logAppDownloadIntent({

@@ -10,6 +10,7 @@ import {
 import { useContent } from '../../context/ContentContext';
 import {
   deleteMediaLibraryItemFromFirestore,
+  deleteMediaLibraryItemsBatchFromFirestore,
   saveMediaLibraryItemToFirestore,
   uploadTvVideoAsset
 } from '../../services/firebaseContentService';
@@ -161,7 +162,13 @@ export const StudioMediaLibrary: React.FC<StudioMediaLibraryProps> = ({
   onUpdateTvScreen,
   onStatusMessage
 }) => {
-  const { mediaLibrary, isFirebaseAdmin, upsertBackupMediaItem, removeBackupMediaItem } = useContent();
+  const {
+    mediaLibrary,
+    isFirebaseAdmin,
+    upsertBackupMediaItem,
+    removeBackupMediaItem,
+    removeBackupMediaItemsBatch
+  } = useContent();
 
   // Add / Edit form state
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -179,11 +186,13 @@ export const StudioMediaLibrary: React.FC<StudioMediaLibraryProps> = ({
   const [isUpdatingStandby, setIsUpdatingStandby] = useState(false);
   const [feedback, setFeedback] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  // Filter / preview / delete state
+  // Filter / preview / delete / batch selection state
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<'All' | MediaLibraryCategory>('All');
   const [previewItemId, setPreviewItemId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<MediaLibraryItem | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [batchDeleteTargets, setBatchDeleteTargets] = useState<MediaLibraryItem[] | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
   if (!isAuthorized) return null;
@@ -230,17 +239,13 @@ export const StudioMediaLibrary: React.FC<StudioMediaLibraryProps> = ({
     e.target.value = '';
     if (!file) return;
 
-    if (file.size > 60 * 1024 * 1024) {
-      notify('Video file 60MB se chhoti honi chahiye.', 'error');
-      return;
-    }
-
     setFeedback(null);
     setIsUploading(true);
     try {
+      const uploadPromise = uploadTvVideoAsset(file, file.name, adminPin, 'media_library');
       const [probedDur, res] = await Promise.all([
         probeVideoDurationSec(file),
-        uploadTvVideoAsset(file, file.name, adminPin, 'media_library')
+        uploadPromise
       ]);
 
       setUrl(res.url);
@@ -394,6 +399,37 @@ export const StudioMediaLibrary: React.FC<StudioMediaLibraryProps> = ({
   };
 
   const handleConfirmDelete = async () => {
+    if (batchDeleteTargets && batchDeleteTargets.length > 0) {
+      const idsToDelete = batchDeleteTargets.map((item) => item.id);
+      const idSet = new Set(idsToDelete);
+      setIsDeleting(true);
+      try {
+        removeBackupMediaItemsBatch(idsToDelete);
+        if (isFirebaseAdmin) {
+          await deleteMediaLibraryItemsBatchFromFirestore(idsToDelete);
+        }
+        if (editingId && idSet.has(editingId)) {
+          resetForm();
+        }
+        if (previewItemId && idSet.has(previewItemId)) {
+          setPreviewItemId(null);
+        }
+        setSelectedIds((prev) => prev.filter((id) => !idSet.has(id)));
+        notify(
+          `${idsToDelete.length} selected media ${
+            idsToDelete.length === 1 ? 'file' : 'files'
+          } permanently deleted from Media Library.`,
+          'success'
+        );
+      } catch (err: any) {
+        notify(err?.message || 'Batch delete karne mein error aaya.', 'error');
+      } finally {
+        setIsDeleting(false);
+        setBatchDeleteTargets(null);
+      }
+      return;
+    }
+
     if (!deleteTarget) return;
     setIsDeleting(true);
     try {
@@ -407,6 +443,7 @@ export const StudioMediaLibrary: React.FC<StudioMediaLibraryProps> = ({
       if (previewItemId === deleteTarget.id) {
         setPreviewItemId(null);
       }
+      setSelectedIds((prev) => prev.filter((id) => id !== deleteTarget.id));
       notify(`"${deleteTarget.title}" Media Library se delete ho gayi.`, 'success');
     } catch (err: any) {
       notify(err?.message || 'Delete karne mein error aaya.', 'error');
@@ -431,6 +468,31 @@ export const StudioMediaLibrary: React.FC<StudioMediaLibraryProps> = ({
       );
     });
   }, [mediaLibrary, searchQuery, categoryFilter]);
+
+  const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const selectedMediaItems = useMemo(
+    () => mediaLibrary.filter((item) => selectedIdSet.has(item.id)),
+    [mediaLibrary, selectedIdSet]
+  );
+  const allFilteredSelected =
+    filteredItems.length > 0 && filteredItems.every((item) => selectedIdSet.has(item.id));
+
+  const toggleSelectItem = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((itemId) => itemId !== id) : [...prev, id]
+    );
+  };
+
+  const handleToggleSelectAllFiltered = () => {
+    if (filteredItems.length === 0) return;
+    const filteredIds = filteredItems.map((it) => it.id);
+    const filteredSet = new Set(filteredIds);
+    if (allFilteredSelected) {
+      setSelectedIds((prev) => prev.filter((id) => !filteredSet.has(id)));
+    } else {
+      setSelectedIds((prev) => Array.from(new Set([...prev, ...filteredIds])));
+    }
+  };
 
   const formValidationPreview = useMemo(() => {
     if (!url.trim()) return null;
@@ -780,6 +842,58 @@ export const StudioMediaLibrary: React.FC<StudioMediaLibraryProps> = ({
           </div>
         </div>
 
+        {/* Batch Select & Delete Action Bar */}
+        {mediaLibrary.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl bg-slate-950/80 border border-slate-800 px-3.5 py-2.5">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-200 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={allFilteredSelected}
+                  disabled={filteredItems.length === 0 || isDeleting}
+                  onChange={handleToggleSelectAllFiltered}
+                  className="w-4 h-4 rounded border-slate-600 bg-slate-900 text-rose-500 focus:ring-0"
+                />
+                <span>
+                  {allFilteredSelected
+                    ? `Deselect All (${filteredItems.length})`
+                    : `Select All (${filteredItems.length})`}
+                </span>
+              </label>
+
+              {selectedMediaItems.length > 0 && (
+                <span className="px-2 py-0.5 rounded-md bg-rose-500/15 border border-rose-500/40 text-[11px] font-black text-rose-200 tabular-nums">
+                  {selectedMediaItems.length} Selected
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {selectedMediaItems.length > 0 && (
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={() => setSelectedIds([])}
+                  className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[11px] font-bold text-slate-300"
+                >
+                  Clear Selection
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={selectedMediaItems.length === 0 || isDeleting}
+                onClick={() => setBatchDeleteTargets(selectedMediaItems)}
+                className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-black flex items-center gap-1.5 shadow disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>
+                  Delete Selected{selectedMediaItems.length > 0 ? ` (${selectedMediaItems.length})` : ''}
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {filteredItems.length === 0 ? (
           <div className="p-8 text-center rounded-xl bg-slate-950 border border-dashed border-slate-800 text-xs text-slate-400 space-y-1.5">
             <p className="font-bold text-slate-300">
@@ -801,12 +915,15 @@ export const StudioMediaLibrary: React.FC<StudioMediaLibraryProps> = ({
                 ((tvScreen.playNowItemId && tvScreen.playNowItemId === playlistMatch?.id) ||
                   (!tvScreen.playNowItemId && standbyPlaylist[0]?.id === playlistMatch?.id));
               const isPreviewOpen = previewItemId === item.id;
+              const isSelected = selectedIdSet.has(item.id);
 
               return (
                 <div
                   key={item.id}
                   className={`rounded-2xl border p-4 space-y-3 transition-colors ${
-                    isPlayingOnStandby
+                    isSelected
+                      ? 'bg-rose-950/20 border-rose-500/70 ring-1 ring-rose-500/35'
+                      : isPlayingOnStandby
                       ? 'bg-emerald-950/25 border-emerald-500/50'
                       : editingId === item.id
                       ? 'bg-indigo-950/30 border-indigo-500/60'
@@ -815,7 +932,18 @@ export const StudioMediaLibrary: React.FC<StudioMediaLibraryProps> = ({
                 >
                   {/* Top Badges & Title */}
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 space-y-1">
+                    <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                      <label className="pt-0.5 shrink-0 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          disabled={isDeleting}
+                          onChange={() => toggleSelectItem(item.id)}
+                          aria-label={`Select ${item.title} for batch delete`}
+                          className="w-4 h-4 rounded border-slate-600 bg-slate-900 text-rose-500 focus:ring-0 cursor-pointer"
+                        />
+                      </label>
+                      <div className="min-w-0 space-y-1 flex-1">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span
                           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase ${
@@ -876,6 +1004,7 @@ export const StudioMediaLibrary: React.FC<StudioMediaLibraryProps> = ({
                         <p className="text-xs text-slate-400 line-clamp-2">{item.description}</p>
                       )}
                       <p className="text-[11px] text-slate-500 truncate">{item.url}</p>
+                      </div>
                     </div>
                   </div>
 
@@ -968,13 +1097,24 @@ export const StudioMediaLibrary: React.FC<StudioMediaLibraryProps> = ({
         )}
       </div>
 
-      {/* Delete Confirmation Modal */}
+      {/* Single & Batch Delete Confirmation Modal */}
       <ConfirmDeleteModal
-        open={Boolean(deleteTarget)}
-        title="Media Library Video Delete Karein?"
+        open={Boolean(deleteTarget || (batchDeleteTargets && batchDeleteTargets.length > 0))}
+        title={
+          batchDeleteTargets && batchDeleteTargets.length > 0
+            ? `Delete ${batchDeleteTargets.length} Selected Media ${
+                batchDeleteTargets.length === 1 ? 'File' : 'Files'
+              }?`
+            : 'Media Library Video Delete Karein?'
+        }
         itemName={deleteTarget?.title}
+        itemNames={batchDeleteTargets?.map((it) => it.title)}
         isDeleting={isDeleting}
-        onCancel={() => !isDeleting && setDeleteTarget(null)}
+        onCancel={() => {
+          if (isDeleting) return;
+          setDeleteTarget(null);
+          setBatchDeleteTargets(null);
+        }}
         onConfirm={handleConfirmDelete}
       />
     </div>

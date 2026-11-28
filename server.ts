@@ -94,7 +94,10 @@ app.use(express.static(path.resolve(__dirname, 'public')));
 // CORS & cache control for live data across any mobile data network or origin
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-admin-pin');
+  res.header(
+    'Access-Control-Allow-Headers',
+    'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-admin-pin, x-file-name'
+  );
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
@@ -1028,6 +1031,24 @@ try {
   fsSync.mkdirSync(TV_MEDIA_DIR, { recursive: true });
 } catch {}
 
+const TV_MEDIA_MIME_BY_EXT: Record<string, string> = {
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.ogg': 'video/ogg',
+  '.mov': 'video/quicktime',
+  '.m4v': 'video/x-m4v',
+  '.mkv': 'video/x-matroska',
+  '.3gp': 'video/3gpp',
+  '.avi': 'video/x-msvideo',
+  '.ts': 'video/mp2t',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml'
+};
+
 app.get('/api/media/tv/:filename', (req: Request, res: Response) => {
   const safeName = path.basename(req.params.filename || '').replace(/[^a-zA-Z0-9._-]/g, '');
   if (!safeName) {
@@ -1037,90 +1058,357 @@ app.get('/api/media/tv/:filename', (req: Request, res: Response) => {
   if (!fsSync.existsSync(filePath)) {
     return res.status(404).json({ error: 'Media not found' });
   }
+  const ext = path.extname(safeName).toLowerCase();
+  if (TV_MEDIA_MIME_BY_EXT[ext]) {
+    res.setHeader('Content-Type', TV_MEDIA_MIME_BY_EXT[ext]);
+  }
+  res.setHeader('Accept-Ranges', 'bytes');
   res.setHeader('Cache-Control', 'public, max-age=86400');
   return res.sendFile(filePath);
 });
 
+const TV_MEDIA_TMP_DIR = path.join(TV_MEDIA_DIR, '.tmp');
+const TV_MEDIA_MIME_TO_EXT: Record<string, string> = {
+  'video/mp4': 'mp4',
+  'application/mp4': 'mp4',
+  'video/webm': 'webm',
+  'video/ogg': 'ogg',
+  'application/ogg': 'ogg',
+  'video/quicktime': 'mov',
+  'video/x-m4v': 'm4v',
+  'video/x-matroska': 'mkv',
+  'video/3gpp': '3gp',
+  'video/3gpp2': '3gp',
+  'video/x-msvideo': 'avi',
+  'video/avi': 'avi',
+  'video/msvideo': 'avi',
+  'video/mp2t': 'ts',
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'image/svg+xml': 'svg'
+};
+const TV_MEDIA_ALLOWED_EXTS = new Set([
+  'mp4',
+  'webm',
+  'ogg',
+  'ogv',
+  'mov',
+  'm4v',
+  'mkv',
+  '3gp',
+  'avi',
+  'ts',
+  'png',
+  'jpg',
+  'jpeg',
+  'webp',
+  'gif',
+  'svg'
+]);
+
+function resolveTvMediaExt(rawFileName: string, contentType: string): { ext: string; origExt: string } {
+  const origExt = path.extname(rawFileName).toLowerCase().replace('.', '');
+  const normalizedOrigExt = origExt === 'jpeg' ? 'jpg' : origExt === 'ogv' ? 'ogg' : origExt;
+  let ext = TV_MEDIA_ALLOWED_EXTS.has(normalizedOrigExt) ? normalizedOrigExt : '';
+  if (!ext) {
+    ext = TV_MEDIA_MIME_TO_EXT[contentType.split(';')[0].trim().toLowerCase()] || '';
+  }
+  return { ext, origExt };
+}
+
+async function cleanupStaleTvMediaChunks(): Promise<void> {
+  try {
+    const entries = await fs.readdir(TV_MEDIA_TMP_DIR, { withFileTypes: true });
+    const cutoff = Date.now() - 30 * 60 * 1000;
+    await Promise.all(
+      entries.map(async (entry) => {
+        if (!entry.isFile()) return;
+        const p = path.join(TV_MEDIA_TMP_DIR, entry.name);
+        try {
+          const st = await fs.stat(p);
+          if (st.mtimeMs < cutoff) {
+            await fs.unlink(p);
+          }
+        } catch {}
+      })
+    );
+  } catch {}
+}
+
 app.post(
   '/api/admin/tv-media/upload',
+  (req: Request, res: Response, next: () => void) => {
+    const rawHeaderName = String(req.headers['x-file-name'] || '');
+    let decodedName = rawHeaderName;
+    try {
+      decodedName = decodeURIComponent(rawHeaderName);
+    } catch {}
+    console.info('[TV-MEDIA-UPLOAD] Incoming upload request', {
+      fileName: decodedName || '(none)',
+      contentType: String(req.headers['content-type'] || '(none)'),
+      contentLength: String(req.headers['content-length'] || '(chunked)'),
+      hasAdminPinHeader: Boolean(req.headers['x-admin-pin'])
+    });
+    res.on('finish', () => {
+      if (res.statusCode === 401) {
+        console.warn('[TV-MEDIA-UPLOAD] Rejected 401: Invalid or missing Admin PIN', {
+          fileName: decodedName || '(none)',
+          hasAdminPinHeader: Boolean(req.headers['x-admin-pin'])
+        });
+      }
+    });
+    next();
+  },
   requireAdmin,
   express.raw({
-    type: ['video/*', 'image/*', 'application/octet-stream'],
-    limit: '60mb'
+    type: () => true,
+    limit: '65mb'
   }),
   async (req: Request, res: Response) => {
+    const encodedFileName = String(req.headers['x-file-name'] || '');
+    let rawFileName = encodedFileName;
+    try {
+      rawFileName = decodeURIComponent(encodedFileName);
+    } catch {}
+    const contentType = String(req.headers['content-type'] || '').toLowerCase();
+
     try {
       const buf = req.body;
       if (!Buffer.isBuffer(buf) || buf.length === 0) {
-        return res.status(400).json({ error: 'Empty media payload' });
+        console.warn('[TV-MEDIA-UPLOAD] Rejected 400 EMPTY_PAYLOAD', {
+          fileName: rawFileName || '(none)',
+          contentType,
+          isBuffer: Buffer.isBuffer(buf)
+        });
+        return res.status(400).json({
+          error: 'Empty media payload (0 bytes received by server).',
+          code: 'EMPTY_PAYLOAD'
+        });
       }
       if (buf.length > 60 * 1024 * 1024) {
-        return res.status(413).json({ error: 'File size must be under 60MB' });
+        const sizeMb = (buf.length / (1024 * 1024)).toFixed(2);
+        console.warn('[TV-MEDIA-UPLOAD] Rejected 413 FILE_TOO_LARGE', {
+          fileName: rawFileName || '(none)',
+          sizeMb,
+          byteLength: buf.length
+        });
+        return res.status(413).json({
+          error: `File size (${sizeMb} MB) exceeds the 60 MB limit.`,
+          code: 'FILE_TOO_LARGE'
+        });
       }
 
-      const encodedFileName = String(req.headers['x-file-name'] || '');
-      let rawFileName = encodedFileName;
-      try {
-        rawFileName = decodeURIComponent(encodedFileName);
-      } catch {}
-      const contentType = String(req.headers['content-type'] || '').toLowerCase();
-      const origExt = path.extname(rawFileName).toLowerCase().replace('.', '');
-
-      const mimeToExt: Record<string, string> = {
-        'video/mp4': 'mp4',
-        'video/webm': 'webm',
-        'video/ogg': 'ogg',
-        'video/quicktime': 'mov',
-        'video/x-m4v': 'm4v',
-        'video/x-matroska': 'mkv',
-        'video/3gpp': '3gp',
-        'image/png': 'png',
-        'image/jpeg': 'jpg',
-        'image/jpg': 'jpg',
-        'image/webp': 'webp',
-        'image/gif': 'gif',
-        'image/svg+xml': 'svg'
-      };
-      const allowedExts = new Set([
-        'mp4',
-        'webm',
-        'ogg',
-        'mov',
-        'm4v',
-        'mkv',
-        '3gp',
-        'png',
-        'jpg',
-        'jpeg',
-        'webp',
-        'gif',
-        'svg'
-      ]);
-
-      let ext = mimeToExt[contentType.split(';')[0].trim()] || '';
-      if (!ext && allowedExts.has(origExt)) {
-        ext = origExt === 'jpeg' ? 'jpg' : origExt;
-      }
+      const { ext, origExt } = resolveTvMediaExt(rawFileName, contentType);
       if (!ext) {
-        return res.status(400).json({ error: 'Unsupported media format. Use MP4, WebM, MOV, PNG, JPG, or WEBP.' });
+        console.warn('[TV-MEDIA-UPLOAD] Rejected 400 UNSUPPORTED_FORMAT', {
+          fileName: rawFileName || '(none)',
+          origExt: origExt || '(none)',
+          contentType: contentType || '(none)',
+          byteLength: buf.length
+        });
+        return res.status(400).json({
+          error: `Unsupported media format (ext="${origExt || 'none'}", type="${
+            contentType.split(';')[0].trim() || 'none'
+          }"). Use MP4, WebM, MOV, M4V, MKV, OGG, 3GP, AVI, TS, PNG, JPG, or WEBP.`,
+          code: 'UNSUPPORTED_FORMAT'
+        });
       }
 
       await fs.mkdir(TV_MEDIA_DIR, { recursive: true });
-      const baseSlug = path
-        .basename(rawFileName, path.extname(rawFileName))
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, '_')
-        .slice(0, 28) || 'tv_ad';
+      const baseSlug =
+        path
+          .basename(rawFileName, path.extname(rawFileName))
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, '_')
+          .slice(0, 28) || 'tv_ad';
       const filename = `${baseSlug}_${Date.now()}.${ext}`;
       await fs.writeFile(path.join(TV_MEDIA_DIR, filename), buf);
+
+      console.info('[TV-MEDIA-UPLOAD] Saved media file successfully', {
+        filename,
+        ext,
+        byteLength: buf.length,
+        sizeMb: (buf.length / (1024 * 1024)).toFixed(2)
+      });
 
       return res.json({
         success: true,
         url: `/api/media/tv/${filename}`
       });
     } catch (err: any) {
-      return res.status(500).json({ error: err.message || 'Failed to upload TV media' });
+      console.error('[TV-MEDIA-UPLOAD] Server write error', {
+        fileName: rawFileName || '(none)',
+        message: err?.message || String(err)
+      });
+      return res.status(500).json({
+        error: err.message || 'Failed to upload TV media',
+        code: 'SERVER_WRITE_ERROR'
+      });
     }
+  },
+  (err: any, _req: Request, res: Response, _next: any) => {
+    const status = err?.status || err?.statusCode || (err?.type === 'entity.too.large' ? 413 : 400);
+    const code =
+      err?.type === 'entity.too.large' ? 'PAYLOAD_TOO_LARGE' : err?.type || 'RAW_BODY_ERROR';
+    console.error('[TV-MEDIA-UPLOAD] Raw body parser error', {
+      status,
+      code,
+      message: err?.message
+    });
+    return res.status(status).json({
+      error:
+        err?.type === 'entity.too.large'
+          ? 'Video file exceeds the 65 MB server payload limit.'
+          : err?.message || 'Failed to parse uploaded video payload',
+      code
+    });
+  }
+);
+
+app.post(
+  '/api/admin/tv-media/upload-chunk',
+  requireAdmin,
+  express.raw({
+    type: () => true,
+    limit: '8mb'
+  }),
+  async (req: Request, res: Response) => {
+    const encodedFileName = String(req.headers['x-file-name'] || '');
+    let rawFileName = encodedFileName;
+    try {
+      rawFileName = decodeURIComponent(encodedFileName);
+    } catch {}
+    const contentType = String(req.headers['content-type'] || '').toLowerCase();
+    const rawUploadId = String(req.headers['x-upload-id'] || '').replace(/[^a-zA-Z0-9_-]/g, '');
+    const chunkIndex = Number.parseInt(String(req.headers['x-chunk-index'] || ''), 10);
+    const totalChunks = Number.parseInt(String(req.headers['x-total-chunks'] || ''), 10);
+
+    if (
+      !rawUploadId ||
+      rawUploadId.length < 4 ||
+      !Number.isInteger(chunkIndex) ||
+      !Number.isInteger(totalChunks) ||
+      totalChunks < 1 ||
+      totalChunks > 64 ||
+      chunkIndex < 0 ||
+      chunkIndex >= totalChunks
+    ) {
+      return res.status(400).json({
+        error: 'Invalid chunked upload headers (x-upload-id, x-chunk-index, x-total-chunks).',
+        code: 'INVALID_CHUNK_HEADERS'
+      });
+    }
+
+    const buf = req.body;
+    if (!Buffer.isBuffer(buf) || buf.length === 0) {
+      return res.status(400).json({
+        error: 'Empty media chunk payload (0 bytes received).',
+        code: 'EMPTY_PAYLOAD'
+      });
+    }
+
+    const { ext, origExt } = resolveTvMediaExt(rawFileName, contentType);
+    if (!ext) {
+      return res.status(400).json({
+        error: `Unsupported media format (ext="${origExt || 'none'}", type="${
+          contentType.split(';')[0].trim() || 'none'
+        }"). Use MP4, WebM, MOV, M4V, MKV, OGG, 3GP, AVI, TS, PNG, JPG, or WEBP.`,
+        code: 'UNSUPPORTED_FORMAT'
+      });
+    }
+
+    const tmpPath = path.join(TV_MEDIA_TMP_DIR, `${rawUploadId}.part`);
+    try {
+      await fs.mkdir(TV_MEDIA_TMP_DIR, { recursive: true });
+      if (chunkIndex === 0) {
+        void cleanupStaleTvMediaChunks();
+        await fs.writeFile(tmpPath, buf);
+      } else {
+        let currentSize = 0;
+        try {
+          const stat = await fs.stat(tmpPath);
+          currentSize = stat.size;
+        } catch {
+          return res.status(409).json({
+            error: 'Upload session expired or missing initial chunk. Please retry upload.',
+            code: 'CHUNK_SESSION_MISSING'
+          });
+        }
+        if (currentSize + buf.length > 60 * 1024 * 1024) {
+          await fs.unlink(tmpPath).catch(() => {});
+          return res.status(413).json({
+            error: 'Combined file size exceeds the 60 MB upload limit.',
+            code: 'FILE_TOO_LARGE'
+          });
+        }
+        await fs.appendFile(tmpPath, buf);
+      }
+
+      if (chunkIndex < totalChunks - 1) {
+        return res.json({
+          success: true,
+          partial: true,
+          chunkIndex,
+          totalChunks
+        });
+      }
+
+      const finalStat = await fs.stat(tmpPath);
+      if (finalStat.size > 60 * 1024 * 1024) {
+        await fs.unlink(tmpPath).catch(() => {});
+        return res.status(413).json({
+          error: 'Combined file size exceeds the 60 MB upload limit.',
+          code: 'FILE_TOO_LARGE'
+        });
+      }
+
+      await fs.mkdir(TV_MEDIA_DIR, { recursive: true });
+      const baseSlug =
+        path
+          .basename(rawFileName, path.extname(rawFileName))
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, '_')
+          .slice(0, 28) || 'tv_ad';
+      const filename = `${baseSlug}_${Date.now()}.${ext}`;
+      await fs.rename(tmpPath, path.join(TV_MEDIA_DIR, filename));
+
+      console.info('[TV-MEDIA-UPLOAD] Saved chunked media file successfully', {
+        filename,
+        ext,
+        chunks: totalChunks,
+        byteLength: finalStat.size,
+        sizeMb: (finalStat.size / (1024 * 1024)).toFixed(2)
+      });
+
+      return res.json({
+        success: true,
+        url: `/api/media/tv/${filename}`
+      });
+    } catch (err: any) {
+      await fs.unlink(tmpPath).catch(() => {});
+      console.error('[TV-MEDIA-UPLOAD] Chunked upload write error', {
+        fileName: rawFileName || '(none)',
+        chunkIndex,
+        totalChunks,
+        message: err?.message || String(err)
+      });
+      return res.status(500).json({
+        error: err?.message || 'Failed to save uploaded media chunk',
+        code: 'SERVER_WRITE_ERROR'
+      });
+    }
+  },
+  (err: any, _req: Request, res: Response, _next: any) => {
+    const status = err?.status || err?.statusCode || (err?.type === 'entity.too.large' ? 413 : 400);
+    const code =
+      err?.type === 'entity.too.large' ? 'CHUNK_TOO_LARGE' : err?.type || 'RAW_BODY_ERROR';
+    return res.status(status).json({
+      error: err?.message || 'Failed to parse media chunk payload',
+      code
+    });
   }
 );
 
@@ -1284,7 +1572,7 @@ app.post(
   '/api/admin/apk/upload',
   requireAdmin,
   express.raw({
-    type: ['application/vnd.android.package-archive', 'application/octet-stream', 'application/zip'],
+    type: () => true,
     limit: '100mb'
   }),
   async (req: Request, res: Response) => {
@@ -1325,8 +1613,20 @@ app.post(
 
 app.post('/api/admin/apk/verify', requireAdmin, async (req: Request, res: Response) => {
   const rawUrl = typeof req.body?.url === 'string' ? req.body.url.trim() : '';
+  const startedAt = Date.now();
+  const checkedAt = Date.now();
+
   if (!rawUrl) {
-    return res.status(400).json({ valid: false, status: 0, error: 'URL is required' });
+    return res.status(400).json({
+      valid: false,
+      is200Ok: false,
+      status: 0,
+      statusText: 'Bad Request',
+      methodUsed: 'HEAD',
+      latencyMs: 0,
+      checkedAt,
+      error: 'URL is required'
+    });
   }
 
   // Local server-hosted APK file verification
@@ -1337,28 +1637,87 @@ app.post('/api/admin/apk/verify', requireAdmin, async (req: Request, res: Respon
       const stat = fsSync.statSync(filePath);
       return res.json({
         valid: true,
+        is200Ok: true,
         status: 200,
+        statusText: 'OK',
+        methodUsed: 'LOCAL',
+        latencyMs: Date.now() - startedAt,
+        contentType: 'application/vnd.android.package-archive',
         finalUrl: rawUrl,
-        contentLength: stat.size
+        contentLength: stat.size,
+        checkedAt
       });
     }
-    return res.json({ valid: false, status: 404, error: 'Uploaded APK file not found on server' });
+    return res.json({
+      valid: false,
+      is200Ok: false,
+      status: 404,
+      statusText: 'Not Found',
+      methodUsed: 'LOCAL',
+      latencyMs: Date.now() - startedAt,
+      checkedAt,
+      error: 'Uploaded APK file not found on server'
+    });
   }
 
   let parsed: URL;
   try {
     parsed = new URL(rawUrl);
   } catch {
-    return res.status(400).json({ valid: false, status: 0, error: 'Invalid URL format' });
+    return res.status(400).json({
+      valid: false,
+      is200Ok: false,
+      status: 0,
+      statusText: 'Invalid URL',
+      methodUsed: 'HEAD',
+      latencyMs: 0,
+      checkedAt,
+      error: 'Invalid URL format'
+    });
   }
 
   if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-    return res.status(400).json({ valid: false, status: 0, error: 'Only http/https URLs are supported' });
+    return res.status(400).json({
+      valid: false,
+      is200Ok: false,
+      status: 0,
+      statusText: 'Unsupported Protocol',
+      methodUsed: 'HEAD',
+      latencyMs: 0,
+      checkedAt,
+      error: 'Only http/https URLs are supported'
+    });
+  }
+
+  const host = parsed.hostname.toLowerCase();
+  const isPrivateHost =
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host === '::1' ||
+    host === '0.0.0.0' ||
+    host.endsWith('.local') ||
+    /^10\./.test(host) ||
+    /^192\.168\./.test(host) ||
+    /^169\.254\./.test(host) ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(host);
+
+  if (isPrivateHost) {
+    return res.status(400).json({
+      valid: false,
+      is200Ok: false,
+      status: 0,
+      statusText: 'Blocked Host',
+      methodUsed: 'HEAD',
+      latencyMs: 0,
+      checkedAt,
+      error: 'Private or loopback addresses cannot be probed'
+    });
   }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 7000);
   try {
+    let methodUsed: 'HEAD' | 'GET_RANGE' = 'HEAD';
     let response = await fetch(parsed.toString(), {
       method: 'HEAD',
       redirect: 'follow',
@@ -1366,6 +1725,7 @@ app.post('/api/admin/apk/verify', requireAdmin, async (req: Request, res: Respon
     });
 
     if (response.status === 405 || response.status === 403) {
+      methodUsed = 'GET_RANGE';
       response = await fetch(parsed.toString(), {
         method: 'GET',
         headers: { Range: 'bytes=0-0' },
@@ -1375,18 +1735,44 @@ app.post('/api/admin/apk/verify', requireAdmin, async (req: Request, res: Respon
     }
 
     const lenHeader = response.headers.get('content-length');
-    const contentLength = lenHeader ? Number(lenHeader) : undefined;
+    const rangeHeader = response.headers.get('content-range');
+    let contentLength = lenHeader ? Number(lenHeader) : undefined;
+    if (methodUsed === 'GET_RANGE' && rangeHeader) {
+      const totalMatch = rangeHeader.match(/\/(\d+)\s*$/);
+      if (totalMatch) {
+        contentLength = Number(totalMatch[1]);
+      }
+    }
+    const contentType = response.headers.get('content-type') || undefined;
+    const is200Ok =
+      methodUsed === 'HEAD'
+        ? response.status === 200
+        : response.status === 200 || response.status === 206;
+
     return res.json({
       valid: response.ok,
+      is200Ok,
       status: response.status,
+      statusText: response.statusText || (response.ok ? 'OK' : 'Error'),
+      methodUsed,
+      latencyMs: Date.now() - startedAt,
+      contentType,
       finalUrl: response.url || parsed.toString(),
       contentLength: Number.isFinite(contentLength) ? contentLength : undefined,
-      error: response.ok ? undefined : `Server returned HTTP ${response.status}`
+      checkedAt,
+      error: response.ok
+        ? undefined
+        : `Server returned HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ''}`
     });
   } catch (err: any) {
     return res.json({
       valid: false,
+      is200Ok: false,
       status: 0,
+      statusText: err?.name === 'AbortError' ? 'Timeout' : 'Network Error',
+      methodUsed: 'HEAD',
+      latencyMs: Date.now() - startedAt,
+      checkedAt,
       error: err?.name === 'AbortError' ? 'Verification timed out' : err?.message || 'Unable to reach URL'
     });
   } finally {
@@ -1486,6 +1872,7 @@ app.get('/api/admin/analytics/downloads', requireAdmin, async (_req: Request, re
 async function startServer() {
   const isProd = process.env.NODE_ENV === 'production';
   const httpServer = http.createServer(app);
+  httpServer.requestTimeout = 10 * 60 * 1000;
 
   if (!isProd) {
     const { createServer: createViteServer } = await import('vite');
